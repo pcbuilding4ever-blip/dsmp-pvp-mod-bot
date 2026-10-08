@@ -202,42 +202,74 @@ async function createTicket(interaction, ticketType) {
 client.on("interactionCreate", async interaction => {
     try {
         if (interaction.isStringSelectMenu()) {
-            if (interaction.customId !== "ticket_type") return;
+            if (interaction.customId === "ticket_type") {
+                await interaction.deferReply({ ephemeral: true });
 
-            await interaction.deferReply({ ephemeral: true });
+                const ticketType = interaction.values[0];
+                const result = await createTicket(interaction, ticketType);
 
-            const ticketType = interaction.values[0];
-            const result = await createTicket(interaction, ticketType);
-
-            if (result.existing) {
                 await interaction.editReply(
-                    `🎫 You already have an open ticket: <#${result.thread.id}>`
+                    result.existing
+                        ? `🎫 You already have an open ticket: <#${result.thread.id}>`
+                        : `✅ Your private **${ticketType}** ticket has been opened: <#${result.thread.id}>`
                 );
-            } else {
-                await interaction.editReply(
-                    `✅ Your private **${ticketType}** ticket has been opened: <#${result.thread.id}>`
-                );
+                return;
             }
 
-            return;
-        }
+            if (interaction.customId === "staff_application_type") {
+                const type = interaction.values[0];
 
-        if (interaction.isButton()) {
-            if (interaction.customId === "open_staff_application") {
-                const { ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
-                const modal = new ModalBuilder().setCustomId("staff_application_modal").setTitle("DSMP PvP Staff Application");
+                const configs = {
+                    staff: {
+                        id: "application_staff",
+                        title: "DSMP PvP Staff Application",
+                        fields: [
+                            ["app_age", "How old are you?", TextInputStyle.Short, 3],
+                            ["app_timezone", "What is your timezone?", TextInputStyle.Short, 50],
+                            ["app_why", "Why do you want to be staff?", TextInputStyle.Paragraph, 1000],
+                            ["app_contribute", "What will you contribute?", TextInputStyle.Paragraph, 1000],
+                            ["app_pick", "Why should we pick you?", TextInputStyle.Paragraph, 1000]
+                        ]
+                    },
+                    giveaway: {
+                        id: "application_giveaway",
+                        title: "Giveaway Mod Application",
+                        fields: [
+                            ["app_age", "How old are you?", TextInputStyle.Short, 3],
+                            ["app_timezone", "What is your timezone?", TextInputStyle.Short, 50],
+                            ["app_experience", "Any giveaway/mod experience?", TextInputStyle.Paragraph, 1000],
+                            ["app_reliable", "Why can we trust you with giveaways?", TextInputStyle.Paragraph, 1000],
+                            ["app_sponsor", "How much can you sponsor a week?", TextInputStyle.Short, 100]
+                        ]
+                    },
+                    partner: {
+                        id: "application_partner",
+                        title: "Partner Manager Application",
+                        fields: [
+                            ["app_age", "How old are you?", TextInputStyle.Short, 3],
+                            ["app_timezone", "What is your timezone?", TextInputStyle.Short, 50],
+                            ["app_experience", "Any partnership experience?", TextInputStyle.Paragraph, 1000],
+                            ["app_value", "What makes a good partner?", TextInputStyle.Paragraph, 1000],
+                            ["app_contribute", "How would you grow our partnerships?", TextInputStyle.Paragraph, 1000]
+                        ]
+                    }
+                };
 
-                const fields = [
-                    ["staff_age", "How old are you?", TextInputStyle.Short, 3],
-                    ["staff_timezone", "What is your timezone?", TextInputStyle.Short, 50],
-                    ["staff_why", "Why do you want to be staff?", TextInputStyle.Paragraph, 1000],
-                    ["staff_contribute", "What will you contribute?", TextInputStyle.Paragraph, 1000],
-                    ["staff_pick", "Why should we pick you?", TextInputStyle.Paragraph, 1000]
-                ];
+                const config = configs[type];
+                if (!config) return;
 
-                modal.addComponents(...fields.map(([id, label, style, max]) =>
+                const modal = new ModalBuilder()
+                    .setCustomId(config.id)
+                    .setTitle(config.title);
+
+                modal.addComponents(...config.fields.map(([id, label, style, max]) =>
                     new ActionRowBuilder().addComponents(
-                        new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(true).setMaxLength(max)
+                        new TextInputBuilder()
+                            .setCustomId(id)
+                            .setLabel(label)
+                            .setStyle(style)
+                            .setRequired(true)
+                            .setMaxLength(max)
                     )
                 ));
 
@@ -245,6 +277,10 @@ client.on("interactionCreate", async interaction => {
                 return;
             }
 
+            return;
+        }
+
+        if (interaction.isButton()) {
             if (interaction.customId !== "close_ticket") return;
 
             if (!interaction.channel.isThread()) {
@@ -262,45 +298,71 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isModalSubmit()) {
-            if (interaction.customId !== "staff_application_modal") return;
+            const configs = {
+                application_staff: {
+                    type: "staff",
+                    logChannel: "1557812559174963312",
+                    title: "🛡️ New Staff Application",
+                    fields: [
+                        ["app_age", "Age"],
+                        ["app_timezone", "Timezone"],
+                        ["app_why", "Why do you want to be staff?"],
+                        ["app_contribute", "What will you contribute?"],
+                        ["app_pick", "Why should we pick you?"]
+                    ]
+                },
+                application_giveaway: {
+                    type: "giveaway",
+                    logChannel: GIVEAWAY_APPLICATION_CHANNEL_ID,
+                    title: "🎁 New Giveaway Mod Application",
+                    fields: [
+                        ["app_age", "Age"],
+                        ["app_timezone", "Timezone"],
+                        ["app_experience", "Giveaway/mod experience"],
+                        ["app_reliable", "Why can we trust you with giveaways?"],
+                        ["app_sponsor", "How much can you sponsor a week?"]
+                    ]
+                },
+                application_partner: {
+                    type: "partner",
+                    logChannel: PARTNER_APPLICATION_CHANNEL_ID,
+                    title: "🤝 New Partner Manager Application",
+                    fields: [
+                        ["app_age", "Age"],
+                        ["app_timezone", "Timezone"],
+                        ["app_experience", "Partnership experience"],
+                        ["app_value", "What makes a good partner?"],
+                        ["app_contribute", "How would you grow our partnerships?"]
+                    ]
+                }
+            };
+
+            const config = configs[interaction.customId];
+            if (!config) return;
 
             await interaction.deferReply({ ephemeral: true });
-            const applicationChannel = await interaction.guild.channels.fetch(type === "giveaway" ? GIVEAWAY_APPLICATION_CHANNEL_ID : type === "partner" ? PARTNER_APPLICATION_CHANNEL_ID : "1557812559174963312");
 
+            const applicationChannel = await interaction.guild.channels.fetch(config.logChannel);
             if (!applicationChannel || applicationChannel.type !== ChannelType.GuildText) {
-                await interaction.editReply("❌ The staff application channel is missing or is not a text channel.");
+                await interaction.editReply("❌ The configured application log channel is missing or is not a text channel.");
                 return;
             }
 
-            const age = interaction.fields.getTextInputValue("staff_age");
-            const timezone = interaction.fields.getTextInputValue("staff_timezone");
-            const why = interaction.fields.getTextInputValue("staff_why");
-            const contribute = interaction.fields.getTextInputValue("staff_contribute");
-            const pick = interaction.fields.getTextInputValue("staff_pick");
+            let content = `## ${config.title}\\n\\n**Applicant:** <@${interaction.user.id}> (${interaction.user.tag})\\n`;
+            for (const [id, label] of config.fields) {
+                content += `\\n**${label}:**\\n${interaction.fields.getTextInputValue(id)}\\n`;
+            }
 
-            await applicationChannel.send({
-                content:
-                    "## 🛡️ New Staff Application\n\n" +
-                    "**Applicant:** <@" + interaction.user.id + "> (" + interaction.user.tag + ")\n" +
-                    "**Age:** " + age + "\n" +
-                    "**Timezone:** " + timezone + "\n\n" +
-                    "**Why do you want to be staff?**\n" + why + "\n\n" +
-                    "**What will you contribute to the server?**\n" + contribute + "\n\n" +
-                    "**Why should we pick you over other applicants?**\n" + pick
-            });
+            await applicationChannel.send({ content });
 
-        const applicationLogChannel = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
-        if (applicationLogChannel && applicationLogChannel.isTextBased()) {
-            await applicationLogChannel.send({
-                content: type === "giveaway"
-                    ? `🎁 **New Giveaway Mod application** from <@${interaction.user.id}> — logged in <#${applicationChannel.id}>.`
-                    : type === "partner"
-                        ? `🤝 **New Partner Manager application** from <@${interaction.user.id}> — logged in <#${applicationChannel.id}>.`
-                        : `🛡️ **New Staff application** from <@${interaction.user.id}> — logged in <#${applicationChannel.id}>.`
-            });
-        }
+            const notificationChannel = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+            if (notificationChannel && notificationChannel.isTextBased()) {
+                await notificationChannel.send({
+                    content: `${config.title} submitted by <@${interaction.user.id}>. Full application logged in <#${applicationChannel.id}>.`
+                });
+            }
 
-            await interaction.editReply("✅ Your staff application has been submitted! Good luck 🤝🔥");
+            await interaction.editReply(`✅ Your ${config.type === "giveaway" ? "Giveaway Mod" : config.type === "partner" ? "Partner Manager" : "Staff"} application has been submitted! Good luck 🤝🔥`);
             return;
         }
 
