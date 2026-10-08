@@ -374,10 +374,10 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.commandName === "staffapply") {
-            const applicationChannel = await interaction.guild.channels.fetch("1557812559174963312");
+            const applicationPanelChannel = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
 
-            if (!applicationChannel || applicationChannel.type !== ChannelType.GuildText) {
-                await interaction.reply({ content: "❌ The configured staff application channel is missing or is not a text channel.", ephemeral: true });
+            if (!applicationPanelChannel || applicationPanelChannel.type !== ChannelType.GuildText) {
+                await interaction.reply({ content: "❌ The application panel channel is missing or is not a text channel.", ephemeral: true });
                 return;
             }
 
@@ -405,7 +405,7 @@ client.on("interactionCreate", async interaction => {
                     }
                 );
 
-            await applicationChannel.send({
+            await applicationPanelChannel.send({
                 content: "## 🛡️ DSMP PvP Applications\n\nChoose the position you want to apply for below.",
                 components: [new ActionRowBuilder().addComponents(menu)]
             });
