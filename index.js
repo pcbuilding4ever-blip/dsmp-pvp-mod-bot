@@ -95,6 +95,19 @@ const commands = [
     new SlashCommandBuilder()
         .setName("unlock")
         .setDescription("Unlock the current channel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName("slowmode")
+        .setDescription("Set slowmode in the current channel")
+        .addIntegerOption(option =>
+            option
+                .setName("seconds")
+                .setDescription("Slowmode delay in seconds (0 to disable)")
+                .setRequired(true)
+                .setMinValue(0)
+                .setMaxValue(21600)
+        )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 ].map(command => command.toJSON());
 
@@ -179,6 +192,31 @@ client.on("interactionCreate", async interaction => {
 
             await interaction.reply({
                 content: "❌ I couldn't unlock this channel. Make sure I have **Manage Channels** permission.",
+                ephemeral: true
+            });
+        }
+
+        return;
+    }
+
+    if (interaction.commandName === "slowmode") {
+        const seconds = interaction.options.getInteger("seconds");
+
+        try {
+            await interaction.channel.setRateLimitPerUser(seconds);
+
+            if (seconds === 0) {
+                await interaction.reply("🔓 **Slowmode disabled.**");
+            } else {
+                await interaction.reply(
+                    `🐌 **Slowmode set to ${seconds} second(s).**`
+                );
+            }
+        } catch (error) {
+            console.error("❌ Slowmode failed:", error);
+
+            await interaction.reply({
+                content: "❌ I couldn't change slowmode. Make sure I have **Manage Channels** permission.",
                 ephemeral: true
             });
         }
