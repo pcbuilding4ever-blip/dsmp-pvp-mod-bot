@@ -4,10 +4,16 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    PermissionFlagsBits
+    PermissionFlagsBits,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType
 } = require("discord.js");
 
 const fs = require("fs");
+
+const TICKET_CHANNEL_ID = "1553777212170178570";
 
 const client = new Client({
     intents: [
@@ -108,6 +114,11 @@ const commands = [
                 .setMinValue(0)
                 .setMaxValue(21600)
         )
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName("ticketpanel")
+        .setDescription("Post the private ticket panel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 ].map(command => command.toJSON());
 
@@ -130,10 +141,150 @@ client.once("ready", async () => {
 });
 
 client.on("interactionCreate", async interaction => {
+    if (interaction.isButton()) {
+        if (interaction.customId === "open_ticket") {
+            await interaction.deferReply({ ephemeral: true });
+
+            try {
+                const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+
+                if (!parent || parent.type !== ChannelType.GuildText) {
+                    await interaction.editReply(
+                        "❌ The configured ticket channel is missing or is not a text channel."
+                    );
+                    return;
+                }
+
+                const activeThreads = await parent.threads.fetchActive();
+                const existingTicket = activeThreads.threads.find(
+                    thread => thread.ownerId === interaction.user.id
+                );
+
+                if (existingTicket) {
+                    await interaction.editReply(
+                        `🎫 You already have an open ticket: <#${existingTicket.id}>`
+                    );
+                    return;
+                }
+
+                const thread = await parent.threads.create({
+                    name: `ticket-${interaction.user.username}`,
+                    type: ChannelType.PrivateThread,
+                    invitable: false,
+                    reason: `Ticket opened by ${interaction.user.tag}`
+                });
+
+                await thread.members.add(interaction.user.id);
+
+                const ticketButtons = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("close_ticket")
+                        .setLabel("Close Ticket")
+                        .setEmoji("🔒")
+                        .setStyle(ButtonStyle.Danger)
+                );
+
+                await thread.send({
+                    content:
+                        `🎫 **Ticket opened by <@${interaction.user.id}>**\n\n` +
+                        "Please explain what you need help with. Staff will be able to respond here.\n\n" +
+                        "Use the button below when you are finished.",
+                    components: [ticketButtons]
+                });
+
+                await interaction.editReply(
+                    `✅ Your private ticket has been opened: <#${thread.id}>`
+                );
+            } catch (error) {
+                console.error("❌ Ticket creation failed:", error);
+
+                await interaction.editReply(
+                    "❌ I couldn't create your ticket. Make sure I have **Create Private Threads**, **Send Messages in Threads**, and **Manage Threads** permissions."
+                );
+            }
+
+            return;
+        }
+
+        if (interaction.customId === "close_ticket") {
+            try {
+                if (!interaction.channel.isThread()) {
+                    await interaction.reply({
+                        content: "❌ This button can only be used inside a ticket.",
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                await interaction.reply("🔒 **Ticket closed.** This thread is now archived.");
+
+                await interaction.channel.setLocked(true);
+                await interaction.channel.setArchived(true);
+            } catch (error) {
+                console.error("❌ Ticket close failed:", error);
+
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({
+                        content: "❌ I couldn't close this ticket. Make sure I have **Manage Threads** permission.",
+                        ephemeral: true
+                    });
+                }
+            }
+
+            return;
+        }
+
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === "ping") {
         await interaction.reply("🏓 Pong!");
+        return;
+    }
+
+    if (interaction.commandName === "ticketpanel") {
+        try {
+            const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+
+            if (!parent || parent.type !== ChannelType.GuildText) {
+                await interaction.reply({
+                    content: "❌ The configured ticket channel is missing or is not a text channel.",
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const button = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId("open_ticket")
+                    .setLabel("Open Ticket")
+                    .setEmoji("🎫")
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+            await parent.send({
+                content:
+                    "## 🎫 DSMP PvP Support\n\n" +
+                    "Need help? Click **Open Ticket** below to create a private support thread.\n" +
+                    "Only you and staff will be able to see your ticket.",
+                components: [button]
+            });
+
+            await interaction.reply({
+                content: "✅ Ticket panel posted.",
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error("❌ Ticket panel failed:", error);
+
+            await interaction.reply({
+                content: "❌ I couldn't post the ticket panel. Make sure I can view and send messages in the ticket channel.",
+                ephemeral: true
+            });
+        }
+
         return;
     }
 
