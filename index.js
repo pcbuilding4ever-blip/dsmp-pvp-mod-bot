@@ -22,15 +22,34 @@ const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
 const GIVEAWAYS_FILE = "./giveaways.json";
 const giveawayTimers = new Map();
+const spamTracker = new Map();
+const modLogChannelName = "mod-logs";
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
     ]
 });
 
 const warningsFile = "./warnings.json";
+
+async function sendModLog(guild, message) {
+    try {
+        const channel = guild.channels.cache.find(ch => ch.name === modLogChannelName && ch.isTextBased());
+        if (channel) await channel.send({ content: message });
+    } catch (error) {
+        console.error("❌ Mod log failed:", error.message);
+    }
+}
+
+function formatMember(member) {
+    return `**User:** <@${member.id}> (${member.user.tag})\\n**ID:** ${member.id}\\n**Joined:** ${member.joinedAt ? member.joinedAt.toISOString() : "Unknown"}`;
+}
+
+
 
 function loadWarnings() {
     try {
@@ -230,6 +249,50 @@ new SlashCommandBuilder()
             .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
+    new SlashCommandBuilder()
+        .setName("userinfo")
+        .setDescription("View information about a member")
+        .addUserOption(option => option.setName("user").setDescription("Member to inspect").setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
+    new SlashCommandBuilder()
+        .setName("unwarn")
+        .setDescription("Remove a warning from a member")
+        .addUserOption(option => option.setName("user").setDescription("Member").setRequired(true))
+        .addIntegerOption(option => option.setName("number").setDescription("Warning number to remove").setRequired(true).setMinValue(1))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
+    new SlashCommandBuilder()
+        .setName("unban")
+        .setDescription("Unban a user")
+        .addStringOption(option => option.setName("user_id").setDescription("User ID to unban").setRequired(true))
+        .addStringOption(option => option.setName("reason").setDescription("Reason").setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
+
+    new SlashCommandBuilder()
+        .setName("untimeout")
+        .setDescription("Remove a member's timeout")
+        .addUserOption(option => option.setName("user").setDescription("Member").setRequired(true))
+        .addStringOption(option => option.setName("reason").setDescription("Reason").setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
+    new SlashCommandBuilder()
+        .setName("announce")
+        .setDescription("Send an announcement")
+        .addChannelOption(option => option.setName("channel").setDescription("Announcement channel").setRequired(true))
+        .addStringOption(option => option.setName("message").setDescription("Announcement text").setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
+        .setName("stats")
+        .setDescription("Show server statistics"),
+
+    new SlashCommandBuilder()
+        .setName("report")
+        .setDescription("Report a member")
+        .addUserOption(option => option.setName("user").setDescription("Member to report").setRequired(true))
+        .addStringOption(option => option.setName("reason").setDescription("Reason for the report").setRequired(true)),
 
     new SlashCommandBuilder()
         .setName("purge")
@@ -741,6 +804,90 @@ if (interaction.commandName === "timeout") {
     return;
 }
 
+        if (interaction.commandName === "userinfo") {
+            const user = interaction.options.getUser("user");
+            const member = await interaction.guild.members.fetch(user.id);
+            const warnings = loadWarnings()[user.id] || [];
+            await interaction.reply({
+                content: `👤 **User Info**\\n\\n${formatMember(member)}\\n**Account created:** ${user.createdAt.toISOString()}\\n**Roles:** ${member.roles.cache.filter(r => r.id !== interaction.guild.id).map(r => r.name).join(", ") || "None"}\\n**Warnings:** ${warnings.length}`,
+                ephemeral: true
+            });
+            return;
+        }
+
+        if (interaction.commandName === "unwarn") {
+            const user = interaction.options.getUser("user");
+            const number = interaction.options.getInteger("number");
+            const warnings = loadWarnings();
+            const list = warnings[user.id] || [];
+            if (number > list.length) {
+                await interaction.reply({ content: "❌ That warning number does not exist.", ephemeral: true });
+                return;
+            }
+            const removed = list.splice(number - 1, 1)[0];
+            warnings[user.id] = list;
+            saveWarnings(warnings);
+            await sendModLog(interaction.guild, `🧹 **Warning removed**\\n**User:** <@${user.id}>\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${removed.reason}`);
+            await interaction.reply(`✅ Removed warning **#${number}** from **${user.tag}**.`);
+            return;
+        }
+
+        if (interaction.commandName === "unban") {
+            const userId = interaction.options.getString("user_id").trim();
+            const reason = interaction.options.getString("reason");
+            await interaction.guild.members.unban(userId, reason);
+            await sendModLog(interaction.guild, `🔓 **Unban**\\n**User ID:** ${userId}\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${reason}`);
+            await interaction.reply(`🔓 **${userId}** has been unbanned.`);
+            return;
+        }
+
+        if (interaction.commandName === "untimeout") {
+            const user = interaction.options.getUser("user");
+            const reason = interaction.options.getString("reason");
+            const member = await interaction.guild.members.fetch(user.id);
+            if (!member.moderatable) {
+                await interaction.reply({ content: "❌ I cannot remove that timeout. Check my role hierarchy.", ephemeral: true });
+                return;
+            }
+            await member.timeout(null, reason);
+            await sendModLog(interaction.guild, `🔓 **Timeout removed**\\n**User:** <@${user.id}>\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${reason}`);
+            await interaction.reply(`🔓 **${user.tag}** is no longer timed out.`);
+            return;
+        }
+
+        if (interaction.commandName === "announce") {
+            const channel = interaction.options.getChannel("channel");
+            const message = interaction.options.getString("message");
+            if (!channel.isTextBased()) {
+                await interaction.reply({ content: "❌ That is not a text channel.", ephemeral: true });
+                return;
+            }
+            await channel.send({ content: `📢 **ANNOUNCEMENT**\\n\\n${message}\\n\\n— <@${interaction.user.id}>` });
+            await interaction.reply({ content: `✅ Announcement sent to <#${channel.id}>.`, ephemeral: true });
+            return;
+        }
+
+        if (interaction.commandName === "stats") {
+            const guild = interaction.guild;
+            const humans = guild.members.cache.filter(m => !m.user.bot).size;
+            const bots = guild.members.cache.filter(m => m.user.bot).size;
+            await interaction.reply(`📊 **DSMP PvP Stats**\\n\\n👥 Members: **${guild.memberCount}**\\n👤 Humans cached: **${humans}**\\n🤖 Bots cached: **${bots}**\\n💬 Channels: **${guild.channels.cache.size}**\\n🎭 Roles: **${guild.roles.cache.size - 1}**\\n🎫 Active tickets: **${guild.channels.cache.filter(c => c.isThread() && !c.archived).size}**`);
+            return;
+        }
+
+        if (interaction.commandName === "report") {
+            const user = interaction.options.getUser("user");
+            const reason = interaction.options.getString("reason");
+            const result = await createTicket(interaction, "Report a User");
+            if (result.existing) {
+                await interaction.reply({ content: `🎫 You already have an open report/support ticket: <#${result.thread.id}>`, ephemeral: true });
+                return;
+            }
+            await result.thread.send({ content: `🚨 **Report submitted**\\nReported user: <@${user.id}>\\nReason: ${reason}\\nReported by: <@${interaction.user.id}>` });
+            await interaction.reply({ content: `✅ Your report has been sent privately: <#${result.thread.id}>`, ephemeral: true });
+            return;
+        }
+
         if (interaction.commandName === "purge") {
             const amount = interaction.options.getInteger("amount");
 
@@ -918,6 +1065,31 @@ if (interaction.commandName === "timeout") {
             } catch (replyError) {
                 console.error("❌ Could not edit error reply:", replyError);
             }
+        }
+    }
+});
+
+client.on("messageCreate", async message => {
+    if (!message.guild || message.author.bot) return;
+    const now = Date.now();
+    const history = spamTracker.get(message.author.id) || [];
+    const recent = history.filter(t => now - t < 8000);
+    recent.push(now);
+    spamTracker.set(message.author.id, recent);
+
+    const invite = /(?:discord\\.gg|discord\\.com\\/invite)\\/[^\\s]+/i.test(message.content);
+    const mentionSpam = message.mentions.users.size >= 5;
+
+    if (invite || mentionSpam || recent.length >= 6) {
+        try {
+            await message.delete();
+            const member = message.member;
+            if (member && member.moderatable) {
+                await member.timeout(5 * 60 * 1000, "AutoMod: spam, mass mentions, or Discord invite");
+            }
+            await sendModLog(message.guild, `🤖 **AutoMod action**\\n**User:** <@${message.author.id}>\\n**Reason:** ${invite ? "Discord invite link" : mentionSpam ? "Mass mentions" : "Spam"}\\n**Action:** Message deleted + 5 minute timeout`);
+        } catch (error) {
+            console.error("❌ AutoMod action failed:", error.message);
         }
     }
 });
