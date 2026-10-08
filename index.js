@@ -1082,8 +1082,8 @@ if (interaction.commandName === "announce") {
 
     await channel.send({
         content:
-            `📢 **ANNOUNCEMENT**\\n\\n` +
-            `${message}\\n\\n` +
+            `📢 **ANNOUNCEMENT**\n\n` +
+            `${message}\n\n` +
             `— <@${interaction.user.id}>`
     });
 
@@ -1105,7 +1105,7 @@ if (interaction.commandName === "announce") {
     for (const member of membersWithRole.values()) {
         try {
             await member.send(
-                `📢 **DSMP PvP Announcement**\\n\\n${message}`
+                `📢 **DSMP PvP Announcement**\n\n${message}`
             );
             sent++;
         } catch {
@@ -1116,7 +1116,7 @@ if (interaction.commandName === "announce") {
     await interaction.editReply(
         `✅ Announcement posted in <#${channel.id}> and DMed to **${sent}** member(s).` +
         (failed
-            ? `\\n⚠️ Could not DM **${failed}** member(s).`
+            ? `\n⚠️ Could not DM **${failed}** member(s).`
             : "")
     );
 
