@@ -1083,6 +1083,7 @@ if (interaction.commandName === "announce") {
     await channel.send({
         content:
             `📢 **ANNOUNCEMENT**\n\n` +
+            `<@&${role.id}>\n\n` +
             `${message}\n\n` +
             `— <@${interaction.user.id}>`
     });
