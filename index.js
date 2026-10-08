@@ -24,7 +24,38 @@ const GIVEAWAYS_FILE = "./giveaways.json";
 const giveawayTimers = new Map();
 const spamTracker = new Map();
 const modLogChannelName = "mod-logs";
+const SETTINGS_FILE = "./settings.json";
 
+function loadSettings(guildId) {
+    try {
+        const all = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8"));
+
+        return all[guildId] || {
+            logChannelId: null,
+            flaggedWords: []
+        };
+    } catch {
+        return {
+            logChannelId: null,
+            flaggedWords: []
+        };
+    }
+}
+
+function saveSettings(guildId, settings) {
+    let all = {};
+
+    try {
+        all = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8"));
+    } catch {}
+
+    all[guildId] = settings;
+
+    fs.writeFileSync(
+        SETTINGS_FILE,
+        JSON.stringify(all, null, 2)
+    );
+}
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -38,7 +69,13 @@ const warningsFile = "./warnings.json";
 
 async function sendModLog(guild, message) {
     try {
-        const channel = guild.channels.cache.find(ch => ch.name === modLogChannelName && ch.isTextBased());
+        const settings = loadSettings(guild.id);
+
+const channel = settings.logChannelId
+    ? guild.channels.cache.get(settings.logChannelId)
+    : guild.channels.cache.find(
+        ch => ch.name === modLogChannelName && ch.isTextBased()
+    );c
         if (channel) await channel.send({ content: message });
     } catch (error) {
         console.error("❌ Mod log failed:", error.message);
@@ -276,14 +313,19 @@ new SlashCommandBuilder()
         .addUserOption(option => option.setName("user").setDescription("Member").setRequired(true))
         .addStringOption(option => option.setName("reason").setDescription("Reason").setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+    
+new SlashCommandBuilder()
+    .setName("settings")
+    .setDescription("Configure bot settings")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     new SlashCommandBuilder()
         .setName("announce")
         .setDescription("Send an announcement")
         .addChannelOption(option => option.setName("channel").setDescription("Announcement channel").setRequired(true))
-        .addStringOption(option => option.setName("message").setDescription("Announcement text").setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-
+.addStringOption(option => option.setName("message").setDescription("Announcement text").setRequired(true))
+.addRoleOption(option => option.setName("role").setDescription("DM members with this role").setRequired(true))
+.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
     new SlashCommandBuilder()
         .setName("stats")
         .setDescription("Show server statistics"),
@@ -423,6 +465,71 @@ async function createTicket(interaction, ticketType) {
 client.on("interactionCreate", async interaction => {
     try {
         if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === "settings_menu") {
+    const choice = interaction.values[0];
+
+    if (choice === "logs") {
+        const modal = new ModalBuilder()
+            .setCustomId("settings_logs")
+            .setTitle("Set Mod Logs Channel");
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("channel_id")
+                    .setLabel("Channel ID")
+                    .setPlaceholder("Paste the channel ID")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+            )
+        );
+
+        await interaction.showModal(modal);
+        return;
+    }
+
+    if (choice === "words") {
+        const modal = new ModalBuilder()
+            .setCustomId("settings_words")
+            .setTitle("Set AutoMod Flagged Words");
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("words")
+                    .setLabel("Flagged words")
+                    .setPlaceholder("word1, word2, word3")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(false)
+            )
+        );
+
+        await interaction.showModal(modal);
+        return;
+    }
+
+    if (choice === "view") {
+        const settings = loadSettings(interaction.guild.id);
+
+        await interaction.reply({
+            content:
+                `⚙️ **Current Settings**\n\n` +
+                `📋 **Logs:** ${
+                    settings.logChannelId
+                        ? `<#${settings.logChannelId}>`
+                        : "Default #mod-logs"
+                }\n` +
+                `🚫 **Flagged words:** ${
+                    settings.flaggedWords.length
+                        ? settings.flaggedWords.join(", ")
+                        : "None"
+                }`,
+            ephemeral: true
+        });
+
+        return;
+    }
+}
             if (interaction.customId === "ticket_type") {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -541,6 +648,65 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isModalSubmit()) {
+            if (
+    interaction.customId === "settings_logs" ||
+    interaction.customId === "settings_words"
+) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const settings = loadSettings(interaction.guild.id);
+
+    if (interaction.customId === "settings_logs") {
+        const channelId = interaction.fields
+            .getTextInputValue("channel_id")
+            .trim();
+
+        const channel = interaction.guild.channels.cache.get(channelId);
+
+        if (!channel || !channel.isTextBased()) {
+            await interaction.editReply(
+                "❌ That isn't a valid text channel ID."
+            );
+            return;
+        }
+
+        settings.logChannelId = channelId;
+
+        saveSettings(
+            interaction.guild.id,
+            settings
+        );
+
+        await interaction.editReply(
+            `✅ Mod logs are now sent to <#${channelId}>.`
+        );
+
+        return;
+    }
+
+    if (interaction.customId === "settings_words") {
+        const rawWords =
+            interaction.fields.getTextInputValue("words") || "";
+
+        settings.flaggedWords = rawWords
+            .split(",")
+            .map(word => word.trim().toLowerCase())
+            .filter(Boolean)
+            .slice(0, 100);
+
+        saveSettings(
+            interaction.guild.id,
+            settings
+        );
+
+        await interaction.editReply(
+            `✅ AutoMod flagged words updated.\n` +
+            `**${settings.flaggedWords.length}** word(s) configured.`
+        );
+
+        return;
+    }
+}
             const configs = {
                 application_staff: {
                     type: "staff",
@@ -854,13 +1020,95 @@ if (interaction.commandName === "timeout") {
             await interaction.reply(`🔓 **${user.tag}** is no longer timed out.`);
             return;
         }
+if (interaction.commandName === "settings") {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId("settings_menu")
+        .setPlaceholder("Choose a setting")
+        .addOptions(
+            {
+                label: "Logs Channel",
+                description: "Choose where moderation logs go",
+                value: "logs",
+                emoji: "📋"
+            },
+            {
+                label: "AutoMod Flagged Words",
+                description: "Set words AutoMod should flag",
+                value: "words",
+                emoji: "🚫"
+            },
+            {
+                label: "View Current Settings",
+                description: "See the current configuration",
+                value: "view",
+                emoji: "👀"
+            }
+        );
 
-        if (interaction.commandName === "announce") {
-            const channel = interaction.options.getChannel("channel");
-            const message = interaction.options.getString("message");
-            if (!channel.isTextBased()) {
-                await interaction.reply({ content: "❌ That is not a text channel.", ephemeral: true });
-                return;
+    await interaction.reply({
+        content:
+            "⚙️ **DSMP PvP Bot Settings**\n\n" +
+            "Choose a setting below.",
+        components: [
+            new ActionRowBuilder().addComponents(menu)
+        ],
+        ephemeral: true
+    });
+
+    return;
+}
+if (interaction.commandName === "announce") {
+    const channel = interaction.options.getChannel("channel");
+    const message = interaction.options.getString("message");
+    const role = interaction.options.getRole("role");
+if (!channel.isTextBased()) {
+    await interaction.reply({
+        content: "❌ That is not a text channel.",
+        ephemeral: true
+    });
+    return;
+}
+
+await interaction.deferReply({ ephemeral: true });
+
+await channel.send({
+    content:
+        `📢 **ANNOUNCEMENT**\n\n` +
+        `${message}\n\n` +
+        `— <@${interaction.user.id}>`
+});
+
+await interaction.editReply(
+    `📨 Sending announcement DMs to members with ${role}...`
+);
+
+await interaction.guild.members.fetch();
+
+let sent = 0;
+let failed = 0;
+
+for (const member of role.members.values()) {
+    if (member.user.bot) continue;
+
+    try {
+        await member.send(
+            `📢 **DSMP PvP Announcement**\n\n${message}`
+        );
+
+        sent++;
+    } catch {
+        failed++;
+    }
+}
+
+await interaction.editReply(
+    `✅ Announcement posted in <#${channel.id}> and DMed to **${sent}** member(s).` +
+    (failed
+        ? `\n⚠️ Could not DM **${failed}** member(s).`
+        : "")
+);
+
+return;
             }
             await channel.send({ content: `📢 **ANNOUNCEMENT**\\n\\n${message}\\n\\n— <@${interaction.user.id}>` });
             await interaction.reply({ content: `✅ Announcement sent to <#${channel.id}>.`, ephemeral: true });
@@ -1076,18 +1324,38 @@ client.on("messageCreate", async message => {
     const recent = history.filter(t => now - t < 8000);
     recent.push(now);
     spamTracker.set(message.author.id, recent);
+const settings = loadSettings(message.guild.id);
 
+const flaggedWord = settings.flaggedWords.find(
+    word =>
+        word &&
+        message.content.toLowerCase().includes(word)
+);
     const invite = /(?:discord\\.gg|discord\\.com\\/invite)\\/[^\\s]+/i.test(message.content);
     const mentionSpam = message.mentions.users.size >= 5;
 
-    if (invite || mentionSpam || recent.length >= 6) {
+if (flaggedWord || invite || mentionSpam || recent.length >= 6) {
         try {
             await message.delete();
             const member = message.member;
             if (member && member.moderatable) {
                 await member.timeout(5 * 60 * 1000, "AutoMod: spam, mass mentions, or Discord invite");
             }
-            await sendModLog(message.guild, `🤖 **AutoMod action**\\n**User:** <@${message.author.id}>\\n**Reason:** ${invite ? "Discord invite link" : mentionSpam ? "Mass mentions" : "Spam"}\\n**Action:** Message deleted + 5 minute timeout`);
+await sendModLog(
+    message.guild,
+    `🤖 **AutoMod action**\n` +
+    `**User:** <@${message.author.id}>\n` +
+    `**Reason:** ${
+        flaggedWord
+            ? `Flagged word: ${flaggedWord}`
+            : invite
+                ? "Discord invite link"
+                : mentionSpam
+                    ? "Mass mentions"
+                    : "Spam"
+    }\n` +
+    `**Action:** Message deleted + 5 minute timeout`
+);
         } catch (error) {
             console.error("❌ AutoMod action failed:", error.message);
         }
