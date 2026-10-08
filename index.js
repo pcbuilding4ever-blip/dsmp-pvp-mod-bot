@@ -289,6 +289,17 @@ client.on("interactionCreate", async interaction => {
                     "**Why should we pick you over other applicants?**\n" + pick
             });
 
+        const applicationLogChannel = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+        if (applicationLogChannel && applicationLogChannel.isTextBased()) {
+            await applicationLogChannel.send({
+                content: type === "giveaway"
+                    ? `🎁 **New Giveaway Mod application** from <@${interaction.user.id}> — logged in <#${applicationChannel.id}>.`
+                    : type === "partner"
+                        ? `🤝 **New Partner Manager application** from <@${interaction.user.id}> — logged in <#${applicationChannel.id}>.`
+                        : `🛡️ **New Staff application** from <@${interaction.user.id}> — logged in <#${applicationChannel.id}>.`
+            });
+        }
+
             await interaction.editReply("✅ Your staff application has been submitted! Good luck 🤝🔥");
             return;
         }
