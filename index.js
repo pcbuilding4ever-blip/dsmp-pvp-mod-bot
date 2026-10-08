@@ -9,7 +9,10 @@ const {
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
-    ChannelType
+    ChannelType,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } = require("discord.js");
 
 const fs = require("fs");
@@ -303,18 +306,36 @@ client.on("interactionCreate", async interaction => {
                 return;
             }
 
-            const applyButton = new ButtonBuilder()
-                .setCustomId("open_staff_application")
-                .setLabel("Apply for Staff")
-                .setEmoji("🛡️")
-                .setStyle(ButtonStyle.Primary);
+            const menu = new StringSelectMenuBuilder()
+                .setCustomId("staff_application_type")
+                .setPlaceholder("Choose what you want to apply for")
+                .addOptions(
+                    {
+                        label: "Staff Team",
+                        description: "Apply for general server staff",
+                        value: "staff",
+                        emoji: "🛡️"
+                    },
+                    {
+                        label: "Giveaway Mod",
+                        description: "Help run and manage giveaways",
+                        value: "giveaway",
+                        emoji: "🎁"
+                    },
+                    {
+                        label: "Partner Manager",
+                        description: "Manage partnerships and partner relations",
+                        value: "partner",
+                        emoji: "🤝"
+                    }
+                );
 
             await applicationChannel.send({
-                content: "## 🛡️ DSMP PvP Staff Applications\n\nWant to join the staff team? Click the button below to fill out the application.\n\n**Applications ask for:**\n🎂 Age\n🌍 Timezone\n🛠️ Why you want to be staff\n💡 What you will contribute to the server\n⭐ Why we should pick you over other applicants",
-                components: [new ActionRowBuilder().addComponents(applyButton)]
+                content: "## 🛡️ DSMP PvP Applications\n\nChoose the position you want to apply for below.",
+                components: [new ActionRowBuilder().addComponents(menu)]
             });
 
-            await interaction.reply({ content: "✅ Staff application panel posted.", ephemeral: true });
+            await interaction.reply({ content: "✅ Application panel posted.", ephemeral: true });
             return;
         }
 
