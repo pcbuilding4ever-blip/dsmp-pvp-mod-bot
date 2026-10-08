@@ -172,6 +172,64 @@ const commands = [
                 .setMaxValue(6)
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+new SlashCommandBuilder()
+    .setName("kick")
+    .setDescription("Kick a member")
+    .addUserOption(option =>
+        option
+            .setName("user")
+            .setDescription("Member to kick")
+            .setRequired(true)
+    )
+    .addStringOption(option =>
+        option
+            .setName("reason")
+            .setDescription("Reason for the kick")
+            .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
+
+new SlashCommandBuilder()
+    .setName("ban")
+    .setDescription("Ban a member")
+    .addUserOption(option =>
+        option
+            .setName("user")
+            .setDescription("Member to ban")
+            .setRequired(true)
+    )
+    .addStringOption(option =>
+        option
+            .setName("reason")
+            .setDescription("Reason for the ban")
+            .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
+
+new SlashCommandBuilder()
+    .setName("timeout")
+    .setDescription("Timeout a member")
+    .addUserOption(option =>
+        option
+            .setName("user")
+            .setDescription("Member to timeout")
+            .setRequired(true)
+    )
+    .addIntegerOption(option =>
+        option
+            .setName("minutes")
+            .setDescription("Timeout duration in minutes")
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(40320)
+    )
+    .addStringOption(option =>
+        option
+            .setName("reason")
+            .setDescription("Reason for the timeout")
+            .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
 
     new SlashCommandBuilder()
         .setName("purge")
@@ -619,6 +677,69 @@ client.on("interactionCreate", async interaction => {
             await interaction.reply({ content: `✅ Giveaway started! ID: ${giveawayId}`, ephemeral: true });
             return;
         }
+if (interaction.commandName === "kick") {
+    const user = interaction.options.getUser("user");
+    const reason = interaction.options.getString("reason");
+    const member = await interaction.guild.members.fetch(user.id);
+
+    if (!member.kickable) {
+        await interaction.reply({
+            content: "❌ I cannot kick that member. Check my role hierarchy.",
+            ephemeral: true
+        });
+        return;
+    }
+
+    await member.kick(reason);
+
+    await interaction.reply(
+        `👢 **${user.tag}** has been kicked.\n**Reason:** ${reason}`
+    );
+    return;
+}
+
+if (interaction.commandName === "ban") {
+    const user = interaction.options.getUser("user");
+    const reason = interaction.options.getString("reason");
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+
+    if (member && !member.bannable) {
+        await interaction.reply({
+            content: "❌ I cannot ban that member. Check my role hierarchy.",
+            ephemeral: true
+        });
+        return;
+    }
+
+    await interaction.guild.members.ban(user.id, { reason });
+
+    await interaction.reply(
+        `🔨 **${user.tag}** has been banned.\n**Reason:** ${reason}`
+    );
+    return;
+}
+
+if (interaction.commandName === "timeout") {
+    const user = interaction.options.getUser("user");
+    const minutes = interaction.options.getInteger("minutes");
+    const reason = interaction.options.getString("reason");
+    const member = await interaction.guild.members.fetch(user.id);
+
+    if (!member.moderatable) {
+        await interaction.reply({
+            content: "❌ I cannot timeout that member. Check my role hierarchy.",
+            ephemeral: true
+        });
+        return;
+    }
+
+    await member.timeout(minutes * 60 * 1000, reason);
+
+    await interaction.reply(
+        `⏱️ **${user.tag}** has been timed out for **${minutes} minute(s)**.\n**Reason:** ${reason}`
+    );
+    return;
+}
 
         if (interaction.commandName === "purge") {
             const amount = interaction.options.getInteger("amount");
