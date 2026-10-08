@@ -91,6 +91,8 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (interaction.commandName === "warn") {
+        await interaction.deferReply();
+
         const user = interaction.options.getUser("user");
         const reason = interaction.options.getString("reason");
         const level = interaction.options.getInteger("level");
@@ -112,45 +114,40 @@ client.on("interactionCreate", async interaction => {
 
         let punishment = "⚠️ Warning only";
 
-const member = await interaction.guild.members.fetch(user.id);
+        try {
+            const member = await interaction.guild.members.fetch(user.id);
 
-if (level === 2) {
-    await member.timeout(10 * 60 * 1000, reason);
-    punishment = "⏱️ 10-minute timeout";
-} else if (level === 3) {
-    await member.timeout(60 * 60 * 1000, reason);
-    punishment = "⏱️ 1-hour timeout";
-} else if (level === 4) {
-    await member.timeout(24 * 60 * 60 * 1000, reason);
-    punishment = "⏱️ 1-day timeout";
-} else if (level === 5) {
-    await member.kick(reason);
-    punishment = "👢 Kick";
-} else if (level === 6) {
-    await member.ban({ reason });
-    punishment = "🔨 Ban";
-}
+            if (level === 2) {
+                await member.timeout(10 * 60 * 1000, reason);
+                punishment = "⏱️ 10-minute timeout";
+            }
 
-await interaction.reply(
-    `⚠️ **${user.tag} has been warned!**\n\n` +
-    `**Reason:** ${reason}\n` +
-    `**Level:** ${level}\n` +
-    `**Punishment:** ${punishment}`
-);
+            else if (level === 3) {
+                await member.timeout(60 * 60 * 1000, reason);
+                punishment = "⏱️ 1-hour timeout";
+            }
 
-        if (level === 2) {
-            punishment = "⏱️ 10-minute timeout";
-        } else if (level === 3) {
-            punishment = "⏱️ 1-hour timeout";
-        } else if (level === 4) {
-            punishment = "⏱️ 1-day timeout";
-        } else if (level === 5) {
-            punishment = "👢 Kick";
-        } else if (level === 6) {
-            punishment = "🔨 Ban";
+            else if (level === 4) {
+                await member.timeout(24 * 60 * 60 * 1000, reason);
+                punishment = "⏱️ 1-day timeout";
+            }
+
+            else if (level === 5) {
+                await member.kick(reason);
+                punishment = "👢 Kick";
+            }
+
+            else if (level === 6) {
+                await member.ban({ reason });
+                punishment = "🔨 Ban";
+            }
+
+        } catch (error) {
+            console.error("❌ Punishment failed:", error);
+            punishment = "⚠️ Warning recorded, but punishment failed";
         }
 
-        await interaction.reply(
+        await interaction.editReply(
             `⚠️ **${user.tag} has been warned!**\n\n` +
             `**Reason:** ${reason}\n` +
             `**Level:** ${level}\n` +
