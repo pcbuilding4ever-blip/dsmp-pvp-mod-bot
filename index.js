@@ -37,7 +37,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("ping")
         .setDescription("Check if the bot is online"),
-    
+
     new SlashCommandBuilder()
         .setName("warnings")
         .setDescription("View a member's warning history")
@@ -48,7 +48,7 @@ const commands = [
                 .setRequired(true)
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-    
+
     new SlashCommandBuilder()
         .setName("warn")
         .setDescription("Warn a member")
@@ -72,7 +72,30 @@ const commands = [
                 .setMinValue(1)
                 .setMaxValue(6)
         )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
+    new SlashCommandBuilder()
+        .setName("purge")
+        .setDescription("Delete messages from the current channel")
+        .addIntegerOption(option =>
+            option
+                .setName("amount")
+                .setDescription("Number of messages to delete (1-100)")
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(100)
+        )
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+
+    new SlashCommandBuilder()
+        .setName("lock")
+        .setDescription("Lock the current channel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName("unlock")
+        .setDescription("Unlock the current channel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: "10" })
@@ -98,6 +121,68 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "ping") {
         await interaction.reply("🏓 Pong!");
+        return;
+    }
+
+    if (interaction.commandName === "purge") {
+        const amount = interaction.options.getInteger("amount");
+
+        try {
+            const deleted = await interaction.channel.bulkDelete(amount, true);
+
+            await interaction.reply({
+                content: `🧹 Deleted **${deleted.size}** message(s).`,
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error("❌ Purge failed:", error);
+
+            await interaction.reply({
+                content: "❌ I couldn't delete those messages. Make sure I have **Manage Messages** permission.",
+                ephemeral: true
+            });
+        }
+
+        return;
+    }
+
+    if (interaction.commandName === "lock") {
+        try {
+            await interaction.channel.permissionOverwrites.edit(
+                interaction.guild.roles.everyone,
+                { SendMessages: false }
+            );
+
+            await interaction.reply("🔒 **Channel locked.**");
+        } catch (error) {
+            console.error("❌ Lock failed:", error);
+
+            await interaction.reply({
+                content: "❌ I couldn't lock this channel. Make sure I have **Manage Channels** permission.",
+                ephemeral: true
+            });
+        }
+
+        return;
+    }
+
+    if (interaction.commandName === "unlock") {
+        try {
+            await interaction.channel.permissionOverwrites.edit(
+                interaction.guild.roles.everyone,
+                { SendMessages: true }
+            );
+
+            await interaction.reply("🔓 **Channel unlocked.**");
+        } catch (error) {
+            console.error("❌ Unlock failed:", error);
+
+            await interaction.reply({
+                content: "❌ I couldn't unlock this channel. Make sure I have **Manage Channels** permission.",
+                ephemeral: true
+            });
+        }
+
         return;
     }
 
@@ -155,8 +240,8 @@ client.on("interactionCreate", async interaction => {
 
         } catch (error) {
             console.error("❌ Punishment failed:", error);
-console.error("Error code:", error.code);
-console.error("Error message:", error.message);
+            console.error("Error code:", error.code);
+            console.error("Error message:", error.message);
             punishment = "⚠️ Warning recorded, but punishment failed";
         }
 
@@ -166,8 +251,11 @@ console.error("Error message:", error.message);
             `**Level:** ${level}\n` +
             `**Punishment:** ${punishment}`
         );
+
+        return;
     }
-        if (interaction.commandName === "warnings") {
+
+    if (interaction.commandName === "warnings") {
         const user = interaction.options.getUser("user");
         const warnings = loadWarnings();
 
