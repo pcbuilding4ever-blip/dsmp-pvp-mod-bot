@@ -120,6 +120,11 @@ const commands = [
     new SlashCommandBuilder()
         .setName("ticketpanel")
         .setDescription("Post the private ticket panel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName("staffapply")
+        .setDescription("Post the staff application panel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 ].map(command => command.toJSON());
 
@@ -213,6 +218,28 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId === "open_staff_application") {
+                const { ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
+                const modal = new ModalBuilder().setCustomId("staff_application_modal").setTitle("DSMP PvP Staff Application");
+
+                const fields = [
+                    ["staff_age", "How old are you?", TextInputStyle.Short, 3],
+                    ["staff_timezone", "What is your timezone?", TextInputStyle.Short, 50],
+                    ["staff_why", "Why do you want to be staff?", TextInputStyle.Paragraph, 1000],
+                    ["staff_contribute", "What will you contribute?", TextInputStyle.Paragraph, 1000],
+                    ["staff_pick", "Why should we pick you?", TextInputStyle.Paragraph, 1000]
+                ];
+
+                modal.addComponents(...fields.map(([id, label, style, max]) =>
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(true).setMaxLength(max)
+                    )
+                ));
+
+                await interaction.showModal(modal);
+                return;
+            }
+
             if (interaction.customId !== "close_ticket") return;
 
             if (!interaction.channel.isThread()) {
@@ -229,10 +256,65 @@ client.on("interactionCreate", async interaction => {
             return;
         }
 
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId !== "staff_application_modal") return;
+
+            await interaction.deferReply({ ephemeral: true });
+            const applicationChannel = await interaction.guild.channels.fetch("1557812559174963312");
+
+            if (!applicationChannel || applicationChannel.type !== ChannelType.GuildText) {
+                await interaction.editReply("❌ The staff application channel is missing or is not a text channel.");
+                return;
+            }
+
+            const age = interaction.fields.getTextInputValue("staff_age");
+            const timezone = interaction.fields.getTextInputValue("staff_timezone");
+            const why = interaction.fields.getTextInputValue("staff_why");
+            const contribute = interaction.fields.getTextInputValue("staff_contribute");
+            const pick = interaction.fields.getTextInputValue("staff_pick");
+
+            await applicationChannel.send({
+                content:
+                    "## 🛡️ New Staff Application\n\n" +
+                    "**Applicant:** <@" + interaction.user.id + "> (" + interaction.user.tag + ")\n" +
+                    "**Age:** " + age + "\n" +
+                    "**Timezone:** " + timezone + "\n\n" +
+                    "**Why do you want to be staff?**\n" + why + "\n\n" +
+                    "**What will you contribute to the server?**\n" + contribute + "\n\n" +
+                    "**Why should we pick you over other applicants?**\n" + pick
+            });
+
+            await interaction.editReply("✅ Your staff application has been submitted! Good luck 🤝🔥");
+            return;
+        }
+
         if (!interaction.isChatInputCommand()) return;
 
         if (interaction.commandName === "ping") {
             await interaction.reply("🏓 Pong!");
+            return;
+        }
+
+        if (interaction.commandName === "staffapply") {
+            const applicationChannel = await interaction.guild.channels.fetch("1557812559174963312");
+
+            if (!applicationChannel || applicationChannel.type !== ChannelType.GuildText) {
+                await interaction.reply({ content: "❌ The configured staff application channel is missing or is not a text channel.", ephemeral: true });
+                return;
+            }
+
+            const applyButton = new ButtonBuilder()
+                .setCustomId("open_staff_application")
+                .setLabel("Apply for Staff")
+                .setEmoji("🛡️")
+                .setStyle(ButtonStyle.Primary);
+
+            await applicationChannel.send({
+                content: "## 🛡️ DSMP PvP Staff Applications\n\nWant to join the staff team? Click the button below to fill out the application.\n\n**Applications ask for:**\n🎂 Age\n🌍 Timezone\n🛠️ Why you want to be staff\n💡 What you will contribute to the server\n⭐ Why we should pick you over other applicants",
+                components: [new ActionRowBuilder().addComponents(applyButton)]
+            });
+
+            await interaction.reply({ content: "✅ Staff application panel posted.", ephemeral: true });
             return;
         }
 
