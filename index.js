@@ -75,7 +75,7 @@ const channel = settings.logChannelId
     ? guild.channels.cache.get(settings.logChannelId)
     : guild.channels.cache.find(
         ch => ch.name === modLogChannelName && ch.isTextBased()
-    );c
+    );
         if (channel) await channel.send({ content: message });
     } catch (error) {
         console.error("❌ Mod log failed:", error.message);
