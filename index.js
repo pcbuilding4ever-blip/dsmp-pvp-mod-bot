@@ -144,6 +144,8 @@ client.on("interactionCreate", async interaction => {
 
         } catch (error) {
             console.error("❌ Punishment failed:", error);
+console.error("Error code:", error.code);
+console.error("Error message:", error.message);
             punishment = "⚠️ Warning recorded, but punishment failed";
         }
 
