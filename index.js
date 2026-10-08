@@ -37,7 +37,18 @@ const commands = [
     new SlashCommandBuilder()
         .setName("ping")
         .setDescription("Check if the bot is online"),
-
+    
+    new SlashCommandBuilder()
+        .setName("warnings")
+        .setDescription("View a member's warning history")
+        .addUserOption(option =>
+            option
+                .setName("user")
+                .setDescription("The member to check")
+                .setRequired(true)
+        )
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+    
     new SlashCommandBuilder()
         .setName("warn")
         .setDescription("Warn a member")
@@ -155,6 +166,31 @@ console.error("Error message:", error.message);
             `**Level:** ${level}\n` +
             `**Punishment:** ${punishment}`
         );
+    }
+        if (interaction.commandName === "warnings") {
+        const user = interaction.options.getUser("user");
+        const warnings = loadWarnings();
+
+        const userWarnings = warnings[user.id] || [];
+
+        if (userWarnings.length === 0) {
+            await interaction.reply(
+                `📋 **${user.tag} has no warnings.**`
+            );
+            return;
+        }
+
+        let message = `📋 **Warnings for ${user.tag}**\n\n`;
+        message += `**Total warnings:** ${userWarnings.length}\n\n`;
+
+        userWarnings.forEach((warning, index) => {
+            message +=
+                `**${index + 1}.** Level ${warning.level}\n` +
+                `Reason: ${warning.reason}\n` +
+                `Moderator: <@${warning.moderator}>\n\n`;
+        });
+
+        await interaction.reply(message);
     }
 });
 
