@@ -20,6 +20,8 @@ const fs = require("fs");
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
+const GIVEAWAYS_FILE = "./giveaways.json";
+const giveawayTimers = new Map();
 
 const client = new Client({
     intents: [
@@ -43,6 +45,91 @@ function saveWarnings(warnings) {
         warningsFile,
         JSON.stringify(warnings, null, 2)
     );
+}
+
+function loadGiveaways() {
+    try { return JSON.parse(fs.readFileSync(GIVEAWAYS_FILE, "utf8")); } catch { return {}; }
+}
+
+function saveGiveaways(giveaways) {
+    fs.writeFileSync(GIVEAWAYS_FILE, JSON.stringify(giveaways, null, 2));
+}
+
+function parseGiveawayDuration(input) {
+    const match = String(input).trim().toLowerCase().match(/^(\\d+)\\s*(s|m|h|d)$/);
+    if (!match) return null;
+    const amount = Number(match[1]);
+    const multipliers = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+    const ms = amount * multipliers[match[2]];
+    if (!Number.isFinite(ms) || ms < 10000 || ms > 7 * 86400000) return null;
+    return ms;
+}
+
+function giveawayDurationLabel(ms) {
+    const seconds = Math.floor(ms / 1000);
+    if (seconds % 86400 === 0) return `${seconds / 86400}d`;
+    if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+    if (seconds % 60 === 0) return `${seconds / 60}m`;
+    return `${seconds}s`;
+}
+
+async function finishGiveaway(giveawayId) {
+    const giveaways = loadGiveaways();
+    const giveaway = giveaways[giveawayId];
+    if (!giveaway || giveaway.ended) return;
+    giveaway.ended = true;
+    const entrants = [...new Set(giveaway.entries || [])];
+    entrants.sort(() => Math.random() - 0.5);
+    giveaway.winners = entrants.slice(0, Math.min(giveaway.winnerCount, entrants.length));
+    saveGiveaways(giveaways);
+    if (giveawayTimers.has(giveawayId)) {
+        clearTimeout(giveawayTimers.get(giveawayId));
+        giveawayTimers.delete(giveawayId);
+    }
+    try {
+        const channel = await client.channels.fetch(giveaway.channelId);
+        if (!channel || !channel.isTextBased()) return;
+        const winnerText = giveaway.winners.length ? giveaway.winners.map(id => `<@${id}>`).join(", ") : "No valid entrants.";
+        const row = giveaway.winners.length ? new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`giveaway_claim:${giveawayId}`).setLabel("Claim Prize").setEmoji("🎁").setStyle(ButtonStyle.Success)
+        ) : undefined;
+        await channel.send({
+            content: `🎉 **GIVEAWAY ENDED!**\\n\\n🎁 **Prize:** ${giveaway.prize}\\n🏆 **Winner(s):** ${winnerText}\\n\\n${giveaway.winners.length ? "Winners can use **Claim Prize** to open a private claim ticket." : "There were no entrants."}`,
+            components: row ? [row] : []
+        });
+        try {
+            const original = await channel.messages.fetch(giveaway.messageId);
+            await original.edit({ content: `🎉 **GIVEAWAY ENDED**\\n\\n🎁 **Prize:** ${giveaway.prize}\\n👤 **Hosted by:** <@${giveaway.hostId}>\\n🏆 **Winner(s):** ${winnerText}`, components: [] });
+        } catch (error) { console.error("❌ Could not update giveaway message:", error.message); }
+    } catch (error) { console.error("❌ Could not finish giveaway:", error); }
+}
+
+function scheduleGiveaway(giveaway) {
+    if (!giveaway || giveaway.ended) return;
+    const remaining = giveaway.endAt - Date.now();
+    if (remaining <= 0) { finishGiveaway(giveaway.id); return; }
+    if (giveawayTimers.has(giveaway.id)) clearTimeout(giveawayTimers.get(giveaway.id));
+    giveawayTimers.set(giveaway.id, setTimeout(() => finishGiveaway(giveaway.id), remaining));
+}
+
+async function createGiveawayClaimTicket(interaction, giveaway) {
+    const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+    if (!parent || parent.type !== ChannelType.GuildText) throw new Error("Ticket channel is missing or is not a text channel.");
+    const activeThreads = await parent.threads.fetchActive();
+    const existing = activeThreads.threads.find(thread => thread.ownerId === interaction.user.id && thread.name.startsWith(`giveaway-claim-${giveaway.id}`));
+    if (existing) return existing;
+    const thread = await parent.threads.create({
+        name: `giveaway-claim-${giveaway.id}-${interaction.user.username}`,
+        type: ChannelType.PrivateThread,
+        invitable: false,
+        reason: `Giveaway prize claim for ${interaction.user.tag}`
+    });
+    await thread.members.add(interaction.user.id);
+    await thread.send({
+        content: `🎁 **Giveaway Prize Claim**\\n\\n**Winner:** <@${interaction.user.id}>\\n**Prize:** ${giveaway.prize}\\n**Hosted by:** <@${giveaway.hostId}>\\n\\nStaff will verify your win and provide the prize. Only the winning user can open this claim ticket.`,
+        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setEmoji("🔒").setStyle(ButtonStyle.Danger))]
+    });
+    return thread;
 }
 
 const commands = [
@@ -128,6 +215,16 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
+        .setName("giveaway")
+        .setDescription("Start a giveaway")
+        .addUserOption(option => option.setName("host").setDescription("Who is hosting the giveaway?").setRequired(true))
+        .addStringOption(option => option.setName("prize").setDescription("What is the prize?").setRequired(true))
+        .addIntegerOption(option => option.setName("winners").setDescription("Number of winners (1-20)").setRequired(true).setMinValue(1).setMaxValue(20))
+        .addStringOption(option => option.setName("time").setDescription("Duration, e.g. 10m, 1h, 1d").setRequired(true))
+        .addIntegerOption(option => option.setName("max_entries").setDescription("Maximum number of entries (1-10000)").setRequired(true).setMinValue(1).setMaxValue(10000))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
         .setName("staffapply")
         .setDescription("Post the staff application panel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -138,6 +235,9 @@ const rest = new REST({ version: "10" })
 
 client.once("ready", async () => {
     console.log(`🔥 DSMP PvP Mod Bot online as ${client.user.tag}`);
+
+    const activeGiveaways = loadGiveaways();
+    for (const giveaway of Object.values(activeGiveaways)) scheduleGiveaway(giveaway);
 
     try {
         await rest.put(
@@ -281,6 +381,28 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId.startsWith("giveaway_enter:")) {
+                const giveawayId = interaction.customId.split(":")[1];
+                const giveaways = loadGiveaways();
+                const giveaway = giveaways[giveawayId];
+                if (!giveaway || giveaway.ended || giveaway.endAt <= Date.now()) { await interaction.reply({ content: "❌ This giveaway has ended.", ephemeral: true }); return; }
+                if (giveaway.entries.includes(interaction.user.id)) { await interaction.reply({ content: "⚠️ You are already entered in this giveaway.", ephemeral: true }); return; }
+                if (giveaway.entries.length >= giveaway.maxEntries) { await interaction.reply({ content: "❌ This giveaway has reached the maximum number of entries.", ephemeral: true }); return; }
+                giveaway.entries.push(interaction.user.id);
+                saveGiveaways(giveaways);
+                await interaction.reply({ content: "✅ You are entered in the giveaway! Good luck 🤝🔥", ephemeral: true });
+                return;
+            }
+            if (interaction.customId.startsWith("giveaway_claim:")) {
+                const giveawayId = interaction.customId.split(":")[1];
+                const giveaways = loadGiveaways();
+                const giveaway = giveaways[giveawayId];
+                if (!giveaway || !giveaway.ended) { await interaction.reply({ content: "❌ This giveaway has not finished yet.", ephemeral: true }); return; }
+                if (!giveaway.winners.includes(interaction.user.id)) { await interaction.reply({ content: "❌ You did not win this giveaway, so you cannot claim this prize.", ephemeral: true }); return; }
+                const thread = await createGiveawayClaimTicket(interaction, giveaway);
+                await interaction.reply({ content: `🎁 Your private giveaway claim ticket is ready: <#${thread.id}>`, ephemeral: true });
+                return;
+            }
             if (interaction.customId !== "close_ticket") return;
 
             if (!interaction.channel.isThread()) {
@@ -474,6 +596,27 @@ client.on("interactionCreate", async interaction => {
                 content: "✅ Ticket panel posted.",
                 ephemeral: true
             });
+            return;
+        }
+
+        if (interaction.commandName === "giveaway") {
+            const host = interaction.options.getUser("host");
+            const prize = interaction.options.getString("prize");
+            const winnerCount = interaction.options.getInteger("winners");
+            const durationInput = interaction.options.getString("time");
+            const maxEntries = interaction.options.getInteger("max_entries");
+            const duration = parseGiveawayDuration(durationInput);
+            if (!duration) { await interaction.reply({ content: "❌ Invalid giveaway time. Use **10s**, **10m**, **1h**, or **1d**. Maximum is 7 days.", ephemeral: true }); return; }
+            const giveawayId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+            const giveaway = { id: giveawayId, hostId: host.id, prize, winnerCount, duration, maxEntries, entries: [], winners: [], channelId: interaction.channelId, messageId: null, endAt: Date.now() + duration, ended: false };
+            const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`giveaway_enter:${giveawayId}`).setLabel("Enter Giveaway").setEmoji("🎉").setStyle(ButtonStyle.Primary));
+            const message = await interaction.channel.send({ content: `# 🎉 GIVEAWAY\\n\\n🎁 **Prize:** ${prize}\\n👤 **Hosted by:** <@${host.id}>\\n🏆 **Winners:** ${winnerCount}\\n⏱️ **Time:** ${giveawayDurationLabel(duration)}\\n👥 **Max entries:** ${maxEntries}\\n\\nClick **Enter Giveaway** below to enter!`, components: [row] });
+            giveaway.messageId = message.id;
+            const giveaways = loadGiveaways();
+            giveaways[giveawayId] = giveaway;
+            saveGiveaways(giveaways);
+            scheduleGiveaway(giveaway);
+            await interaction.reply({ content: `✅ Giveaway started! ID: ${giveawayId}`, ephemeral: true });
             return;
         }
 
