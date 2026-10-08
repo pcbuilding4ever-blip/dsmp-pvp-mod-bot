@@ -1339,7 +1339,7 @@ const flaggedWord = settings.flaggedWords.find(
         word &&
         message.content.toLowerCase().includes(word)
 );
-    const invite = /(?:discord\\.gg|discord\\.com\\/invite)\\/[^\\s]+/i.test(message.content);
+    const invite = /(?:discord\.gg|discord\.com\/invite)\/[^\s]+/i.test(message.content);
     const mentionSpam = message.mentions.users.size >= 5;
 
 if (flaggedWord || invite || mentionSpam || recent.length >= 6) {
