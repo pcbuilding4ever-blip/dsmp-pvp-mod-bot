@@ -1061,61 +1061,69 @@ if (interaction.commandName === "announce") {
     const channel = interaction.options.getChannel("channel");
     const message = interaction.options.getString("message");
     const role = interaction.options.getRole("role");
-if (!channel.isTextBased()) {
-    await interaction.reply({
-        content: "❌ That is not a text channel.",
-        ephemeral: true
+
+    if (!channel.isTextBased()) {
+        await interaction.reply({
+            content: "❌ That is not a text channel.",
+            ephemeral: true
+        });
+        return;
+    }
+
+    if (role.id === interaction.guild.id || role.managed) {
+        await interaction.reply({
+            content: "❌ Please choose a normal server role, not @everyone or a managed role.",
+            ephemeral: true
+        });
+        return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    await channel.send({
+        content:
+            `📢 **ANNOUNCEMENT**\\n\\n` +
+            `${message}\\n\\n` +
+            `— <@${interaction.user.id}>`
     });
+
+    await interaction.editReply(
+        `📨 Sending announcement DMs to members with ${role}...`
+    );
+
+    await interaction.guild.members.fetch();
+
+    const membersWithRole = interaction.guild.members.cache.filter(
+        member =>
+            member.roles.cache.has(role.id) &&
+            !member.user.bot
+    );
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const member of membersWithRole.values()) {
+        try {
+            await member.send(
+                `📢 **DSMP PvP Announcement**\\n\\n${message}`
+            );
+            sent++;
+        } catch {
+            failed++;
+        }
+    }
+
+    await interaction.editReply(
+        `✅ Announcement posted in <#${channel.id}> and DMed to **${sent}** member(s).` +
+        (failed
+            ? `\\n⚠️ Could not DM **${failed}** member(s).`
+            : "")
+    );
+
     return;
 }
 
-await interaction.deferReply({ ephemeral: true });
-
-await channel.send({
-    content:
-        `📢 **ANNOUNCEMENT**\n\n` +
-        `${message}\n\n` +
-        `— <@${interaction.user.id}>`
-});
-
-await interaction.editReply(
-    `📨 Sending announcement DMs to members with ${role}...`
-);
-
-await interaction.guild.members.fetch();
-
-let sent = 0;
-let failed = 0;
-
-for (const member of role.members.values()) {
-    if (member.user.bot) continue;
-
-    try {
-        await member.send(
-            `📢 **DSMP PvP Announcement**\n\n${message}`
-        );
-
-        sent++;
-    } catch {
-        failed++;
-    }
-}
-
-await interaction.editReply(
-    `✅ Announcement posted in <#${channel.id}> and DMed to **${sent}** member(s).` +
-    (failed
-        ? `\n⚠️ Could not DM **${failed}** member(s).`
-        : "")
-);
-
-return;
-            }
-            await channel.send({ content: `📢 **ANNOUNCEMENT**\\n\\n${message}\\n\\n— <@${interaction.user.id}>` });
-            await interaction.reply({ content: `✅ Announcement sent to <#${channel.id}>.`, ephemeral: true });
-            return;
-        }
-
-        if (interaction.commandName === "stats") {
+if (interaction.commandName === "stats") {
             const guild = interaction.guild;
             const humans = guild.members.cache.filter(m => !m.user.bot).size;
             const bots = guild.members.cache.filter(m => m.user.bot).size;
