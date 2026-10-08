@@ -149,16 +149,19 @@ async function createTicket(interaction, ticketType) {
     }
 
     const activeThreads = await parent.threads.fetchActive();
+
     const existingTicket = activeThreads.threads.find(
-        thread => thread.ownerId === interaction.user.id
+        thread =>
+            thread.ownerId === interaction.user.id &&
+            thread.name.startsWith("ticket-")
     );
 
     if (existingTicket) {
-        return existingTicket;
+        return { thread: existingTicket, existing: true };
     }
 
     const thread = await parent.threads.create({
-        name: `${ticketType.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${interaction.user.username}`,
+        name: `ticket-${ticketType.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${interaction.user.username}`,
         type: ChannelType.PrivateThread,
         invitable: false,
         reason: `${ticketType} ticket opened by ${interaction.user.tag}`
@@ -183,83 +186,57 @@ async function createTicket(interaction, ticketType) {
         components: [ticketButtons]
     });
 
-    return thread;
+    return { thread, existing: false };
 }
 
 client.on("interactionCreate", async interaction => {
-    if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === "ticket_type") {
+    try {
+        if (interaction.isStringSelectMenu()) {
+            if (interaction.customId !== "ticket_type") return;
+
             await interaction.deferReply({ ephemeral: true });
 
             const ticketType = interaction.values[0];
+            const result = await createTicket(interaction, ticketType);
 
-            try {
-                const thread = await createTicket(interaction, ticketType);
-
-                if (thread.archived) {
-                    await interaction.editReply(
-                        `🎫 You already have an open ticket: <#${thread.id}>`
-                    );
-                } else {
-                    await interaction.editReply(
-                        `✅ Your private **${ticketType}** ticket has been opened: <#${thread.id}>`
-                    );
-                }
-            } catch (error) {
-                console.error("❌ Ticket creation failed:", error);
-
+            if (result.existing) {
                 await interaction.editReply(
-                    "❌ I couldn't create your ticket. Make sure I have **Create Private Threads**, **Send Messages in Threads**, and **Manage Threads** permissions."
+                    `🎫 You already have an open ticket: <#${result.thread.id}>`
+                );
+            } else {
+                await interaction.editReply(
+                    `✅ Your private **${ticketType}** ticket has been opened: <#${result.thread.id}>`
                 );
             }
 
             return;
         }
 
-        return;
-    }
+        if (interaction.isButton()) {
+            if (interaction.customId !== "close_ticket") return;
 
-    if (interaction.isButton()) {
-        if (interaction.customId === "close_ticket") {
-            try {
-                if (!interaction.channel.isThread()) {
-                    await interaction.reply({
-                        content: "❌ This button can only be used inside a ticket.",
-                        ephemeral: true
-                    });
-                    return;
-                }
-
-                await interaction.reply("🔒 **Ticket closed.** This thread is now archived.");
-
-                await interaction.channel.setLocked(true);
-                await interaction.channel.setArchived(true);
-            } catch (error) {
-                console.error("❌ Ticket close failed:", error);
-
-                if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({
-                        content: "❌ I couldn't close this ticket. Make sure I have **Manage Threads** permission.",
-                        ephemeral: true
-                    });
-                }
+            if (!interaction.channel.isThread()) {
+                await interaction.reply({
+                    content: "❌ This button can only be used inside a ticket.",
+                    ephemeral: true
+                });
+                return;
             }
 
+            await interaction.reply("🔒 **Ticket closed.** This thread is now archived.");
+            await interaction.channel.setLocked(true);
+            await interaction.channel.setArchived(true);
             return;
         }
 
-        return;
-    }
+        if (!interaction.isChatInputCommand()) return;
 
-    if (!interaction.isChatInputCommand()) return;
+        if (interaction.commandName === "ping") {
+            await interaction.reply("🏓 Pong!");
+            return;
+        }
 
-    if (interaction.commandName === "ping") {
-        await interaction.reply("🏓 Pong!");
-        return;
-    }
-
-    if (interaction.commandName === "ticketpanel") {
-        try {
+        if (interaction.commandName === "ticketpanel") {
             const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
 
             if (!parent || parent.type !== ChannelType.GuildText) {
@@ -306,211 +283,200 @@ client.on("interactionCreate", async interaction => {
                     }
                 );
 
-            const row = new ActionRowBuilder().addComponents(menu);
-
             await parent.send({
                 content:
                     "## 🎫 DSMP PvP Support\n\n" +
                     "Select the reason for your ticket below. A private support thread will be created for you.",
-                components: [row]
+                components: [
+                    new ActionRowBuilder().addComponents(menu)
+                ]
             });
 
             await interaction.reply({
                 content: "✅ Ticket panel posted.",
                 ephemeral: true
             });
-        } catch (error) {
-            console.error("❌ Ticket panel failed:", error);
-
-            await interaction.reply({
-                content: "❌ I couldn't post the ticket panel. Make sure I can view and send messages in the ticket channel.",
-                ephemeral: true
-            });
+            return;
         }
 
-        return;
-    }
+        if (interaction.commandName === "purge") {
+            const amount = interaction.options.getInteger("amount");
 
-    if (interaction.commandName === "purge") {
-        const amount = interaction.options.getInteger("amount");
+            try {
+                const deleted = await interaction.channel.bulkDelete(amount, true);
 
-        try {
-            const deleted = await interaction.channel.bulkDelete(amount, true);
+                await interaction.reply({
+                    content: `🧹 Deleted **${deleted.size}** message(s).`,
+                    ephemeral: true
+                });
+            } catch (error) {
+                console.error("❌ Purge failed:", error);
 
-            await interaction.reply({
-                content: `🧹 Deleted **${deleted.size}** message(s).`,
-                ephemeral: true
-            });
-        } catch (error) {
-            console.error("❌ Purge failed:", error);
-
-            await interaction.reply({
-                content: "❌ I couldn't delete those messages. Make sure I have **Manage Messages** permission.",
-                ephemeral: true
-            });
+                await interaction.reply({
+                    content: "❌ I couldn't delete those messages. Make sure I have **Manage Messages** permission.",
+                    ephemeral: true
+                });
+            }
+            return;
         }
 
-        return;
-    }
-
-    if (interaction.commandName === "lock") {
-        try {
-            await interaction.channel.permissionOverwrites.edit(
-                interaction.guild.roles.everyone,
-                { SendMessages: false }
-            );
-
-            await interaction.reply("🔒 **Channel locked.**");
-        } catch (error) {
-            console.error("❌ Lock failed:", error);
-
-            await interaction.reply({
-                content: "❌ I couldn't lock this channel. Make sure I have **Manage Channels** permission.",
-                ephemeral: true
-            });
-        }
-
-        return;
-    }
-
-    if (interaction.commandName === "unlock") {
-        try {
-            await interaction.channel.permissionOverwrites.edit(
-                interaction.guild.roles.everyone,
-                { SendMessages: true }
-            );
-
-            await interaction.reply("🔓 **Channel unlocked.**");
-        } catch (error) {
-            console.error("❌ Unlock failed:", error);
-
-            await interaction.reply({
-                content: "❌ I couldn't unlock this channel. Make sure I have **Manage Channels** permission.",
-                ephemeral: true
-            });
-        }
-
-        return;
-    }
-
-    if (interaction.commandName === "slowmode") {
-        const seconds = interaction.options.getInteger("seconds");
-
-        try {
-            await interaction.channel.setRateLimitPerUser(seconds);
-
-            if (seconds === 0) {
-                await interaction.reply("🔓 **Slowmode disabled.**");
-            } else {
-                await interaction.reply(
-                    `🐌 **Slowmode set to ${seconds} second(s).**`
+        if (interaction.commandName === "lock") {
+            try {
+                await interaction.channel.permissionOverwrites.edit(
+                    interaction.guild.roles.everyone,
+                    { SendMessages: false }
                 );
+                await interaction.reply("🔒 **Channel locked.**");
+            } catch (error) {
+                console.error("❌ Lock failed:", error);
+                await interaction.reply({
+                    content: "❌ I couldn't lock this channel. Make sure I have **Manage Channels** permission.",
+                    ephemeral: true
+                });
             }
-        } catch (error) {
-            console.error("❌ Slowmode failed:", error);
+            return;
+        }
 
-            await interaction.reply({
-                content: "❌ I couldn't change slowmode. Make sure I have **Manage Channels** permission.",
-                ephemeral: true
+        if (interaction.commandName === "unlock") {
+            try {
+                await interaction.channel.permissionOverwrites.edit(
+                    interaction.guild.roles.everyone,
+                    { SendMessages: true }
+                );
+                await interaction.reply("🔓 **Channel unlocked.**");
+            } catch (error) {
+                console.error("❌ Unlock failed:", error);
+                await interaction.reply({
+                    content: "❌ I couldn't unlock this channel. Make sure I have **Manage Channels** permission.",
+                    ephemeral: true
+                });
+            }
+            return;
+        }
+
+        if (interaction.commandName === "slowmode") {
+            const seconds = interaction.options.getInteger("seconds");
+
+            try {
+                await interaction.channel.setRateLimitPerUser(seconds);
+
+                await interaction.reply(
+                    seconds === 0
+                        ? "🔓 **Slowmode disabled.**"
+                        : `🐌 **Slowmode set to ${seconds} second(s).**`
+                );
+            } catch (error) {
+                console.error("❌ Slowmode failed:", error);
+                await interaction.reply({
+                    content: "❌ I couldn't change slowmode. Make sure I have **Manage Channels** permission.",
+                    ephemeral: true
+                });
+            }
+            return;
+        }
+
+        if (interaction.commandName === "warn") {
+            await interaction.deferReply();
+
+            const user = interaction.options.getUser("user");
+            const reason = interaction.options.getString("reason");
+            const level = interaction.options.getInteger("level");
+
+            const warnings = loadWarnings();
+
+            if (!warnings[user.id]) {
+                warnings[user.id] = [];
+            }
+
+            warnings[user.id].push({
+                reason,
+                level,
+                moderator: interaction.user.id,
+                date: new Date().toISOString()
             });
-        }
 
-        return;
-    }
+            saveWarnings(warnings);
 
-    if (interaction.commandName === "warn") {
-        await interaction.deferReply();
+            let punishment = "⚠️ Warning only";
 
-        const user = interaction.options.getUser("user");
-        const reason = interaction.options.getString("reason");
-        const level = interaction.options.getInteger("level");
+            try {
+                const member = await interaction.guild.members.fetch(user.id);
 
-        const warnings = loadWarnings();
-
-        if (!warnings[user.id]) {
-            warnings[user.id] = [];
-        }
-
-        warnings[user.id].push({
-            reason: reason,
-            level: level,
-            moderator: interaction.user.id,
-            date: new Date().toISOString()
-        });
-
-        saveWarnings(warnings);
-
-        let punishment = "⚠️ Warning only";
-
-        try {
-            const member = await interaction.guild.members.fetch(user.id);
-
-            if (level === 2) {
-                await member.timeout(10 * 60 * 1000, reason);
-                punishment = "⏱️ 10-minute timeout";
+                if (level === 2) {
+                    await member.timeout(10 * 60 * 1000, reason);
+                    punishment = "⏱️ 10-minute timeout";
+                } else if (level === 3) {
+                    await member.timeout(60 * 60 * 1000, reason);
+                    punishment = "⏱️ 1-hour timeout";
+                } else if (level === 4) {
+                    await member.timeout(24 * 60 * 60 * 1000, reason);
+                    punishment = "⏱️ 1-day timeout";
+                } else if (level === 5) {
+                    await member.kick(reason);
+                    punishment = "👢 Kick";
+                } else if (level === 6) {
+                    await member.ban({ reason });
+                    punishment = "🔨 Ban";
+                }
+            } catch (error) {
+                console.error("❌ Punishment failed:", error);
+                console.error("Error code:", error.code);
+                console.error("Error message:", error.message);
+                punishment = "⚠️ Warning recorded, but punishment failed";
             }
 
-            else if (level === 3) {
-                await member.timeout(60 * 60 * 1000, reason);
-                punishment = "⏱️ 1-hour timeout";
-            }
-
-            else if (level === 4) {
-                await member.timeout(24 * 60 * 60 * 1000, reason);
-                punishment = "⏱️ 1-day timeout";
-            }
-
-            else if (level === 5) {
-                await member.kick(reason);
-                punishment = "👢 Kick";
-            }
-
-            else if (level === 6) {
-                await member.ban({ reason });
-                punishment = "🔨 Ban";
-            }
-
-        } catch (error) {
-            console.error("❌ Punishment failed:", error);
-            console.error("Error code:", error.code);
-            console.error("Error message:", error.message);
-            punishment = "⚠️ Warning recorded, but punishment failed";
-        }
-
-        await interaction.editReply(
-            `⚠️ **${user.tag} has been warned!**\n\n` +
-            `**Reason:** ${reason}\n` +
-            `**Level:** ${level}\n` +
-            `**Punishment:** ${punishment}`
-        );
-
-        return;
-    }
-
-    if (interaction.commandName === "warnings") {
-        const user = interaction.options.getUser("user");
-        const warnings = loadWarnings();
-
-        const userWarnings = warnings[user.id] || [];
-
-        if (userWarnings.length === 0) {
-            await interaction.reply(
-                `📋 **${user.tag} has no warnings.**`
+            await interaction.editReply(
+                `⚠️ **${user.tag} has been warned!**\n\n` +
+                `**Reason:** ${reason}\n` +
+                `**Level:** ${level}\n` +
+                `**Punishment:** ${punishment}`
             );
             return;
         }
 
-        let message = `📋 **Warnings for ${user.tag}**\n\n`;
-        message += `**Total warnings:** ${userWarnings.length}\n\n`;
+        if (interaction.commandName === "warnings") {
+            const user = interaction.options.getUser("user");
+            const warnings = loadWarnings();
+            const userWarnings = warnings[user.id] || [];
 
-        userWarnings.forEach((warning, index) => {
-            message +=
-                `**${index + 1}.** Level ${warning.level}\n` +
-                `Reason: ${warning.reason}\n` +
-                `Moderator: <@${warning.moderator}>\n\n`;
-        });
+            if (userWarnings.length === 0) {
+                await interaction.reply(`📋 **${user.tag} has no warnings.**`);
+                return;
+            }
 
-        await interaction.reply(message);
+            let message = `📋 **Warnings for ${user.tag}**\n\n`;
+            message += `**Total warnings:** ${userWarnings.length}\n\n`;
+
+            userWarnings.forEach((warning, index) => {
+                message +=
+                    `**${index + 1}.** Level ${warning.level}\n` +
+                    `Reason: ${warning.reason}\n` +
+                    `Moderator: <@${warning.moderator}>\n\n`;
+            });
+
+            await interaction.reply(message);
+        }
+    } catch (error) {
+        console.error("❌ Interaction handler failed:", error);
+
+        if (!interaction.replied && !interaction.deferred) {
+            try {
+                await interaction.reply({
+                    content: "❌ Something went wrong while processing that interaction.",
+                    ephemeral: true
+                });
+            } catch (replyError) {
+                console.error("❌ Could not send error reply:", replyError);
+            }
+        } else if (interaction.deferred) {
+            try {
+                await interaction.editReply(
+                    "❌ Something went wrong while processing that interaction."
+                );
+            } catch (replyError) {
+                console.error("❌ Could not edit error reply:", replyError);
+            }
+        }
     }
 });
 
