@@ -8,6 +8,7 @@ const {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    StringSelectMenuBuilder,
     ChannelType
 } = require("discord.js");
 
@@ -140,61 +141,70 @@ client.once("ready", async () => {
     }
 });
 
+async function createTicket(interaction, ticketType) {
+    const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+
+    if (!parent || parent.type !== ChannelType.GuildText) {
+        throw new Error("Ticket channel is missing or is not a text channel.");
+    }
+
+    const activeThreads = await parent.threads.fetchActive();
+    const existingTicket = activeThreads.threads.find(
+        thread => thread.ownerId === interaction.user.id
+    );
+
+    if (existingTicket) {
+        return existingTicket;
+    }
+
+    const thread = await parent.threads.create({
+        name: `${ticketType.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${interaction.user.username}`,
+        type: ChannelType.PrivateThread,
+        invitable: false,
+        reason: `${ticketType} ticket opened by ${interaction.user.tag}`
+    });
+
+    await thread.members.add(interaction.user.id);
+
+    const ticketButtons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId("close_ticket")
+            .setLabel("Close Ticket")
+            .setEmoji("🔒")
+            .setStyle(ButtonStyle.Danger)
+    );
+
+    await thread.send({
+        content:
+            `🎫 **${ticketType} Ticket**\n\n` +
+            `Opened by <@${interaction.user.id}>.\n\n` +
+            "Please explain what you need help with. Staff will be able to respond here.\n\n" +
+            "Use **Close Ticket** when you are finished.",
+        components: [ticketButtons]
+    });
+
+    return thread;
+}
+
 client.on("interactionCreate", async interaction => {
-    if (interaction.isButton()) {
-        if (interaction.customId === "open_ticket") {
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === "ticket_type") {
             await interaction.deferReply({ ephemeral: true });
 
+            const ticketType = interaction.values[0];
+
             try {
-                const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+                const thread = await createTicket(interaction, ticketType);
 
-                if (!parent || parent.type !== ChannelType.GuildText) {
+                if (thread.archived) {
                     await interaction.editReply(
-                        "❌ The configured ticket channel is missing or is not a text channel."
+                        `🎫 You already have an open ticket: <#${thread.id}>`
                     );
-                    return;
-                }
-
-                const activeThreads = await parent.threads.fetchActive();
-                const existingTicket = activeThreads.threads.find(
-                    thread => thread.ownerId === interaction.user.id
-                );
-
-                if (existingTicket) {
+                } else {
                     await interaction.editReply(
-                        `🎫 You already have an open ticket: <#${existingTicket.id}>`
+                        `✅ Your private **${ticketType}** ticket has been opened: <#${thread.id}>`
                     );
-                    return;
                 }
-
-                const thread = await parent.threads.create({
-                    name: `ticket-${interaction.user.username}`,
-                    type: ChannelType.PrivateThread,
-                    invitable: false,
-                    reason: `Ticket opened by ${interaction.user.tag}`
-                });
-
-                await thread.members.add(interaction.user.id);
-
-                const ticketButtons = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId("close_ticket")
-                        .setLabel("Close Ticket")
-                        .setEmoji("🔒")
-                        .setStyle(ButtonStyle.Danger)
-                );
-
-                await thread.send({
-                    content:
-                        `🎫 **Ticket opened by <@${interaction.user.id}>**\n\n` +
-                        "Please explain what you need help with. Staff will be able to respond here.\n\n" +
-                        "Use the button below when you are finished.",
-                    components: [ticketButtons]
-                });
-
-                await interaction.editReply(
-                    `✅ Your private ticket has been opened: <#${thread.id}>`
-                );
             } catch (error) {
                 console.error("❌ Ticket creation failed:", error);
 
@@ -206,6 +216,10 @@ client.on("interactionCreate", async interaction => {
             return;
         }
 
+        return;
+    }
+
+    if (interaction.isButton()) {
         if (interaction.customId === "close_ticket") {
             try {
                 if (!interaction.channel.isThread()) {
@@ -256,20 +270,49 @@ client.on("interactionCreate", async interaction => {
                 return;
             }
 
-            const button = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId("open_ticket")
-                    .setLabel("Open Ticket")
-                    .setEmoji("🎫")
-                    .setStyle(ButtonStyle.Primary)
-            );
+            const menu = new StringSelectMenuBuilder()
+                .setCustomId("ticket_type")
+                .setPlaceholder("Select what you need help with")
+                .addOptions(
+                    {
+                        label: "Giveaway Claim",
+                        description: "Claim a prize from a giveaway",
+                        value: "Giveaway Claim",
+                        emoji: "🎁"
+                    },
+                    {
+                        label: "General Support",
+                        description: "Get help with the server",
+                        value: "General Support",
+                        emoji: "❓"
+                    },
+                    {
+                        label: "Report a User",
+                        description: "Report a member or rule violation",
+                        value: "Report a User",
+                        emoji: "🚨"
+                    },
+                    {
+                        label: "Scam Report",
+                        description: "Report a scam or suspicious trade",
+                        value: "Scam Report",
+                        emoji: "⚠️"
+                    },
+                    {
+                        label: "Partnership",
+                        description: "Ask about partnering with DSMP PvP",
+                        value: "Partnership",
+                        emoji: "🤝"
+                    }
+                );
+
+            const row = new ActionRowBuilder().addComponents(menu);
 
             await parent.send({
                 content:
                     "## 🎫 DSMP PvP Support\n\n" +
-                    "Need help? Click **Open Ticket** below to create a private support thread.\n" +
-                    "Only you and staff will be able to see your ticket.",
-                components: [button]
+                    "Select the reason for your ticket below. A private support thread will be created for you.",
+                components: [row]
             });
 
             await interaction.reply({
