@@ -18,6 +18,7 @@ const {
 const fs = require("fs");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
+const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 
 const client = new Client({
     intents: [
@@ -263,7 +264,7 @@ client.on("interactionCreate", async interaction => {
             if (interaction.customId !== "staff_application_modal") return;
 
             await interaction.deferReply({ ephemeral: true });
-            const applicationChannel = await interaction.guild.channels.fetch("1557812559174963312");
+            const applicationChannel = await interaction.guild.channels.fetch(type === "giveaway" ? GIVEAWAY_APPLICATION_CHANNEL_ID : "1557812559174963312");
 
             if (!applicationChannel || applicationChannel.type !== ChannelType.GuildText) {
                 await interaction.editReply("❌ The staff application channel is missing or is not a text channel.");
