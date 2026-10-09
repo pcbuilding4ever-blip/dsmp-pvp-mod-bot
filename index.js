@@ -16,6 +16,7 @@ const {
 } = require("discord.js");
 
 const fs = require("fs");
+const vouchSystem = require("./vouch-system");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
@@ -390,7 +391,9 @@ new SlashCommandBuilder()
     new SlashCommandBuilder()
         .setName("staffapply")
         .setDescription("Post the staff application panel")
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    ...vouchSystem.commands
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: "10" })
@@ -398,6 +401,13 @@ const rest = new REST({ version: "10" })
 
 client.once("ready", async () => {
     console.log(`🔥 DSMP PvP Mod Bot online as ${client.user.tag}`);
+
+    try {
+        await vouchSystem.initVouchDatabase();
+        console.log("✅ Vouch database ready!");
+    } catch (error) {
+        console.error("❌ Vouch database setup failed:", error.message);
+    }
 
     const activeGiveaways = loadGiveaways();
     for (const giveaway of Object.values(activeGiveaways)) scheduleGiveaway(giveaway);
@@ -464,6 +474,7 @@ async function createTicket(interaction, ticketType) {
 
 client.on("interactionCreate", async interaction => {
     try {
+        if (await vouchSystem.handleVouchInteraction(interaction)) return;
         if (interaction.isStringSelectMenu()) {
             if (interaction.customId === "settings_menu") {
     const choice = interaction.values[0];
