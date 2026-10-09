@@ -5,6 +5,12 @@ const {
 } = require("discord.js");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
+const EMOJIS = {
+    spawner: { id: "1558199899319959783", name: "spawner" },
+    skeleton: { id: "1558199920304070697", name: "skeletonspawneremoji" },
+    ironGolem: { id: "1558199935176810567", name: "irongolememoji" }
+};
+const emojiText = emoji => "<:" + emoji.name + ":" + emoji.id + ">";
 
 const commands = [
     new SlashCommandBuilder()
@@ -34,10 +40,10 @@ async function createSpawnerTicket(interaction) {
         .setCustomId("spawner_listing_type")
         .setPlaceholder("Choose what you want to buy or sell")
         .addOptions(
-            { label: "Sell Iron Golem Spawner", value: "sell_iron", description: "List an Iron Golem spawner for sale", emoji: "🟠" },
-            { label: "Buy Iron Golem Spawner", value: "buy_iron", description: "Say what you'll pay for an Iron Golem spawner", emoji: "🟠" },
-            { label: "Sell Skeleton Spawner", value: "sell_skeleton", description: "List a Skeleton spawner for sale", emoji: "💀" },
-            { label: "Buy Skeleton Spawner", value: "buy_skeleton", description: "Say what you'll pay for a Skeleton spawner", emoji: "💀" }
+            { label: "Sell Iron Golem Spawner", value: "sell_iron", description: "List an Iron Golem spawner for sale", emoji: EMOJIS.ironGolem },
+            { label: "Buy Iron Golem Spawner", value: "buy_iron", description: "Say what you'll pay for an Iron Golem spawner", emoji: EMOJIS.ironGolem },
+            { label: "Sell Skeleton Spawner", value: "sell_skeleton", description: "List a Skeleton spawner for sale", emoji: EMOJIS.skeleton },
+            { label: "Buy Skeleton Spawner", value: "buy_skeleton", description: "Say what you'll pay for a Skeleton spawner", emoji: EMOJIS.skeleton }
         );
 
     await thread.send({
@@ -56,11 +62,11 @@ async function handleInteraction(interaction) {
     if (interaction.isChatInputCommand() && interaction.commandName === "spawnerprices") {
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
-            .setTitle("💰 Spawner Buy & Sell")
-            .setDescription("Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.\n\n**Supported spawners**\n🟠 Iron Golem\n💀 Skeleton\n\nPrices are set by you — this panel does not use an unreliable market average.")
+            .setTitle(emojiText(EMOJIS.spawner) + " Spawner Buy & Sell")
+            .setDescription("Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.\n\n**Supported spawners**\n" + emojiText(EMOJIS.ironGolem) + " Iron Golem\n" + emojiText(EMOJIS.skeleton) + " Skeleton\n\nPrices are set by you — this panel does not use an unreliable market average.")
             .setFooter({ text: "DSMP PvP • Spawner Market" });
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("spawner_prices_open").setLabel("Buy / Sell Spawners").setEmoji("💰").setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId("spawner_prices_open").setLabel("Buy / Sell Spawners").setEmoji(EMOJIS.spawner).setStyle(ButtonStyle.Success)
         );
         await interaction.reply({ embeds: [embed], components: [row] });
         return true;
@@ -115,10 +121,10 @@ async function handleInteraction(interaction) {
     if (interaction.isModalSubmit() && interaction.customId.startsWith("spawner_price_modal:")) {
         const key = interaction.customId.split(":")[1];
         const choices = {
-            sell_iron: { action: "SELLING", spawner: "Iron Golem Spawner", emoji: "🟠" },
-            buy_iron: { action: "BUYING", spawner: "Iron Golem Spawner", emoji: "🟠" },
-            sell_skeleton: { action: "SELLING", spawner: "Skeleton Spawner", emoji: "💀" },
-            buy_skeleton: { action: "BUYING", spawner: "Skeleton Spawner", emoji: "💀" }
+            sell_iron: { action: "SELLING", spawner: "Iron Golem Spawner", emoji: emojiText(EMOJIS.ironGolem) },
+            buy_iron: { action: "BUYING", spawner: "Iron Golem Spawner", emoji: emojiText(EMOJIS.ironGolem) },
+            sell_skeleton: { action: "SELLING", spawner: "Skeleton Spawner", emoji: emojiText(EMOJIS.skeleton) },
+            buy_skeleton: { action: "BUYING", spawner: "Skeleton Spawner", emoji: emojiText(EMOJIS.skeleton) }
         };
         const choice = choices[key];
         if (!choice) {
@@ -143,7 +149,7 @@ async function handleInteraction(interaction) {
 
         const embed = new EmbedBuilder()
             .setColor(choice.action === "SELLING" ? 0x2ECC71 : 0x3498DB)
-            .setTitle(choice.emoji + " Spawner " + choice.action + " Listing")
+            .setTitle(choice.emoji + " " + choice.spawner + " " + choice.action + " Listing")
             .addFields(
                 { name: "Member", value: "<@" + interaction.user.id + ">", inline: true },
                 { name: "Spawner", value: choice.spawner, inline: true },
