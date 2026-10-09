@@ -278,17 +278,86 @@ async function handleVouchInteraction(interaction) {
                 [interaction.guild.id, targetId]
             );
             if (burst.rows[0].count >= 5) {
-                await db().query(
-                    "UPDATE vouches SET flag_reason=CONCAT_WS('; ', NULLIF(flag_reason,''), '5 or more vouches for this member within 10 minutes') WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '10 minutes' AND reviewed=FALSE",
+                const burstUpdate = await db().query(
+                    "UPDATE vouches SET flag_reason=CONCAT_WS('; ', NULLIF(flag_reason,''), '5 or more vouches for this member within 10 minutes') WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '10 minutes' AND reviewed=FALSE AND (flag_reason IS NULL OR flag_reason NOT LIKE '%5 or more vouches for this member within 10 minutes%') RETURNING id,giver_id,type,reason,flag_reason,created_at",
                     [interaction.guild.id, targetId]
                 );
+                for (const flagged of burstUpdate.rows) {
+                    try {
+                        const flagChannel = await interaction.client.channels.fetch("1558193885837135975");
+                        if (flagChannel && flagChannel.isTextBased()) {
+                            await flagChannel.send({
+                                embeds: [new EmbedBuilder()
+                                    .setColor(0xFEE75C)
+                                    .setTitle("⚠️ Vouch spike flagged for review")
+                                    .setDescription("This vouch is part of a burst of 5 or more vouches for one member within 10 minutes. This is a review signal, not proof of abuse.")
+                                    .addFields(
+                                        { name: "Target member", value: "<@" + targetId + ">", inline: true },
+                                        { name: "Vouch submitted by", value: "<@" + flagged.giver_id + ">", inline: true },
+                                        { name: "Type", value: flagged.type === "scam" ? "Scam vouch" : "Normal vouch", inline: true },
+                                        { name: "Flag reason", value: flagged.flag_reason },
+                                        { name: "Submitted reason", value: flagged.reason }
+                                    )
+                                    .setFooter({ text: "Staff can run /vouchreview to review flagged vouches." })
+                                    .setTimestamp(new Date(flagged.created_at))]
+                            });
+                        }
+                        const target = await interaction.client.users.fetch(targetId);
+                        await target.send("Your vouch is under review, it seemed low effort and fake. You will be notified when it has been accepted or denied");
+                    } catch (notifyError) {
+                        console.warn("Could not send burst-flag notification:", notifyError.message);
+                    }
+                }
             }
             const score = await trustFor(interaction.guild.id, targetId);
+            const flagCheck = await db().query(
+                "SELECT flag_reason FROM vouches WHERE id=$1",
+                [newVouchId]
+            );
+            const thisVouchFlag = flagCheck.rows[0] && flagCheck.rows[0].flag_reason;
+            const burstFlagged = await db().query(
+                "SELECT flag_reason FROM vouches WHERE guild_id=$1 AND target_id=$2 AND giver_id=$3 AND type=$4 AND created_at >= NOW() - INTERVAL '10 minutes'",
+                [interaction.guild.id, targetId, interaction.user.id, type]
+            );
+            const wasFlagged = Boolean(thisVouchFlag || (burstFlagged.rows[0] && burstFlagged.rows[0].flag_reason));
             await interaction.reply({
                 content: (type === "scam" ? "🚨 Scam vouch saved. Trust has decreased immediately." : "🤝 Vouch saved.") +
-                    "\nCurrent trust: **" + (score === null ? "N/A" : score + "%") + "**",
+                    "\nCurrent trust: **" + (score === null ? "N/A" : score + "%") + "**" +
+                    (wasFlagged ? "\n\n⚠️ Your vouch has been flagged for staff review." : ""),
                 ephemeral: true
             });
+            if (wasFlagged) {
+                try {
+                    const target = await interaction.client.users.fetch(targetId);
+                    await target.send("Your vouch is under review, it seemed low effort and fake. You will be notified when it has been accepted or denied");
+                } catch (dmError) {
+                    console.warn("Could not DM target about flagged vouch:", dmError.message);
+                }
+            }
+            if (thisVouchFlag) {
+                try {
+                    const flagChannel = await interaction.client.channels.fetch("1558193885837135975");
+                    if (flagChannel && flagChannel.isTextBased()) {
+                        await flagChannel.send({
+                            embeds: [new EmbedBuilder()
+                                .setColor(0xFEE75C)
+                                .setTitle("⚠️ Vouch flagged for review")
+                                .setDescription("This vouch was automatically flagged. A flag is not a verdict.")
+                                .addFields(
+                                    { name: "Target member", value: "<@" + targetId + ">", inline: true },
+                                    { name: "Vouch submitted by", value: "<@" + interaction.user.id + ">", inline: true },
+                                    { name: "Type", value: type === "scam" ? "Scam vouch" : "Normal vouch", inline: true },
+                                    { name: "Flag reason", value: thisVouchFlag },
+                                    { name: "Submitted reason", value: reason }
+                                )
+                                .setFooter({ text: "Staff can run /vouchreview to review flagged vouches." })
+                                .setTimestamp()]
+                        });
+                    }
+                } catch (flagError) {
+                    console.error("Could not post vouch flag:", flagError.message);
+                }
+            }
         } catch (error) {
             console.error("Vouch save failed:", error);
             await interaction.reply({ content: "❌ Could not save this vouch. Ask an administrator to check the database connection.", ephemeral: true });
