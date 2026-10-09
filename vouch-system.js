@@ -376,18 +376,25 @@ async function handleVouchInteraction(interaction) {
             return true;
         }
         const id = parts[2];
-        const lookup = await db().query("SELECT id FROM vouches WHERE id=$1 AND guild_id=$2 AND flag_reason IS NOT NULL AND reviewed=FALSE AND active=TRUE", [id, interaction.guild.id]);
+        const lookup = await db().query("SELECT id,target_id,type FROM vouches WHERE id=$1 AND guild_id=$2 AND flag_reason IS NOT NULL AND reviewed=FALSE AND active=TRUE", [id, interaction.guild.id]);
         if (!lookup.rowCount) {
             await interaction.reply({ content: "That vouch has already been reviewed or is no longer active.", ephemeral: true });
             return true;
         }
-        if (parts[1] === "remove") {
+        const decision = parts[1] === "remove" ? "denied" : "accepted";
+        if (decision === "denied") {
             await db().query("UPDATE vouches SET active=FALSE, reviewed=TRUE, reviewed_by=$1, reviewed_at=NOW() WHERE id=$2", [interaction.user.id, id]);
         } else {
             await db().query("UPDATE vouches SET reviewed=TRUE, reviewed_by=$1, reviewed_at=NOW() WHERE id=$2", [interaction.user.id, id]);
         }
+        try {
+            const target = await interaction.client.users.fetch(lookup.rows[0].target_id);
+            await target.send("An update on your flagged vouch: it has been " + decision + " by the DSMP PvP staff team.");
+        } catch (notifyError) {
+            console.warn("Could not DM vouch review decision:", notifyError.message);
+        }
         await interaction.update({
-            content: parts[1] === "remove" ? "🗑️ Vouch removed; its trust-score impact is reversed." : "✅ Vouch kept and marked reviewed.",
+            content: decision === "denied" ? "🗑️ Vouch removed; its trust-score impact is reversed. The target member has been notified if DMs are open." : "✅ Vouch kept and marked reviewed. The target member has been notified if DMs are open.",
             embeds: [],
             components: []
         });
