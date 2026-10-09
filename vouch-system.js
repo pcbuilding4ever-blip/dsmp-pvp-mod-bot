@@ -129,9 +129,21 @@ async function showProfile(interaction, targetId, page, edit) {
 
 async function handleVouchInteraction(interaction) {
     if (interaction.isChatInputCommand() && interaction.commandName === "vouchpanel") {
-        await interaction.reply({ content: "✅ Both vouch panels have been posted in this channel.", ephemeral: true });
-        await interaction.channel.send(makePanel("normal"));
-        await interaction.channel.send(makePanel("scam"));
+        await interaction.deferReply({ ephemeral: true });
+        try {
+            const normalChannel = await interaction.client.channels.fetch("1550440006378725406");
+            const scamChannel = await interaction.client.channels.fetch("1550440036669980762");
+            if (!normalChannel || !normalChannel.isTextBased() || !scamChannel || !scamChannel.isTextBased()) {
+                await interaction.editReply("❌ I couldn't find one or both configured vouch channels. Check the channel IDs.");
+                return true;
+            }
+            await normalChannel.send(makePanel("normal"));
+            await scamChannel.send(makePanel("scam"));
+            await interaction.editReply("✅ Normal vouch panel posted in <#1550440006378725406> and scam vouch panel posted in <#1550440036669980762>.");
+        } catch (error) {
+            console.error("Vouch panel posting failed:", error);
+            await interaction.editReply("❌ I couldn't post the panels. Make sure I can view and send messages in both vouch channels.");
+        }
         return true;
     }
 
