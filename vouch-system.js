@@ -274,12 +274,12 @@ async function handleVouchInteraction(interaction) {
                 await db().query("UPDATE vouches SET flag_reason=$1 WHERE id=$2", [reasonFlags.join(", "), newVouchId]);
             }
             const burst = await db().query(
-                "SELECT COUNT(*)::int AS count FROM vouches WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '10 minutes'",
+                "SELECT COUNT(*)::int AS count FROM vouches WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '4 hours'",
                 [interaction.guild.id, targetId]
             );
             if (burst.rows[0].count >= 5) {
                 const burstUpdate = await db().query(
-                    "UPDATE vouches SET flag_reason=CONCAT_WS('; ', NULLIF(flag_reason,''), '5 or more vouches for this member within 10 minutes') WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '10 minutes' AND reviewed=FALSE AND (flag_reason IS NULL OR flag_reason NOT LIKE '%5 or more vouches for this member within 10 minutes%') RETURNING id,giver_id,type,reason,flag_reason,created_at",
+                    "UPDATE vouches SET flag_reason=CONCAT_WS('; ', NULLIF(flag_reason,''), '5 or more vouches for this member within 4 hours') WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '4 hours' AND reviewed=FALSE AND (flag_reason IS NULL OR flag_reason NOT LIKE '%5 or more vouches for this member within 4 hours%') RETURNING id,giver_id,type,reason,flag_reason,created_at",
                     [interaction.guild.id, targetId]
                 );
                 for (const flagged of burstUpdate.rows) {
@@ -290,7 +290,7 @@ async function handleVouchInteraction(interaction) {
                                 embeds: [new EmbedBuilder()
                                     .setColor(0xFEE75C)
                                     .setTitle("⚠️ Vouch spike flagged for review")
-                                    .setDescription("This vouch is part of a burst of 5 or more vouches for one member within 10 minutes. This is a review signal, not proof of abuse.")
+                                    .setDescription("This vouch is part of a burst of 5 or more vouches for one member within 4 hours. This is a review signal, not proof of abuse.")
                                     .addFields(
                                         { name: "Target member", value: "<@" + targetId + ">", inline: true },
                                         { name: "Vouch submitted by", value: "<@" + flagged.giver_id + ">", inline: true },
@@ -316,7 +316,7 @@ async function handleVouchInteraction(interaction) {
             );
             const thisVouchFlag = flagCheck.rows[0] && flagCheck.rows[0].flag_reason;
             const burstFlagged = await db().query(
-                "SELECT flag_reason FROM vouches WHERE guild_id=$1 AND target_id=$2 AND giver_id=$3 AND type=$4 AND created_at >= NOW() - INTERVAL '10 minutes'",
+                "SELECT flag_reason FROM vouches WHERE guild_id=$1 AND target_id=$2 AND giver_id=$3 AND type=$4 AND created_at >= NOW() - INTERVAL '4 hours'",
                 [interaction.guild.id, targetId, interaction.user.id, type]
             );
             const wasFlagged = Boolean(thisVouchFlag || (burstFlagged.rows[0] && burstFlagged.rows[0].flag_reason));
