@@ -7,6 +7,7 @@ const {
 const fs = require("fs");
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const STOCK_FILE = "./spawner-stock.json";
+const PANEL_FILE = "./spawner-panel.json";
 const DEFAULT_STOCK = { iron_golem: 0, skeleton: 0 };
 
 function loadStock() {
@@ -23,6 +24,39 @@ function loadStock() {
 
 function saveStock(stock) {
     fs.writeFileSync(STOCK_FILE, JSON.stringify(stock, null, 2));
+}
+
+function loadPanelRef() {
+    try { return JSON.parse(fs.readFileSync(PANEL_FILE, "utf8")); }
+    catch { return null; }
+}
+
+function savePanelRef(channelId, messageId) {
+    fs.writeFileSync(PANEL_FILE, JSON.stringify({ channelId, messageId }, null, 2));
+}
+
+function buildSpawnerPanel() {
+    const stock = loadStock();
+    const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle(emojiText(EMOJIS.spawner) + " Spawner Buy & Sell")
+        .setDescription("Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.\\n\\n**Available stock**\\n" + emojiText(EMOJIS.ironGolem) + " Iron Golem: **" + stock.iron_golem.toLocaleString("en-US") + "**\\n" + emojiText(EMOJIS.skeleton) + " Skeleton: **" + stock.skeleton.toLocaleString("en-US") + "**\\n\\nPrices are set by you — this panel does not use an unreliable market average.")
+        .setFooter({ text: "DSMP PvP • Spawner Market" });
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("spawner_prices_open").setLabel("Buy / Sell Spawners").setEmoji(EMOJIS.spawner).setStyle(ButtonStyle.Success)
+    );
+    return { embeds: [embed], components: [row] };
+}
+
+async function updateSpawnerPanel(client) {
+    const ref = loadPanelRef();
+    if (!ref || !ref.channelId || !ref.messageId) {
+        throw new Error("No saved Spawner Prices panel. Run /spawnerprices once to create and register it.");
+    }
+    const channel = await client.channels.fetch(ref.channelId);
+    if (!channel || !channel.isTextBased()) throw new Error("Saved Spawner Prices channel is unavailable.");
+    const message = await channel.messages.fetch(ref.messageId);
+    await message.edit(buildSpawnerPanel());
 }
 const EMOJIS = {
     spawner: { id: "1558199899319959783", name: "spawner" },
@@ -107,30 +141,42 @@ async function handleInteraction(interaction) {
         stock[type] = quantity;
         try {
             saveStock(stock);
+            await updateSpawnerPanel(interaction.client);
         } catch (error) {
-            console.error("Could not save spawner stock:", error);
-            await interaction.reply({ content: "❌ I couldn't save the stock. Check the bot's file permissions.", ephemeral: true });
+            console.error("Could not save stock or update Spawner Prices panel:", error);
+            await interaction.reply({
+                content: "⚠️ Stock was saved, but I couldn't edit the existing **Spawner Prices** message. Run /spawnerprices once in the channel where the panel should live, then try /editstock again. Details: " + error.message,
+                ephemeral: true
+            });
             return true;
         }
         const label = type === "iron_golem" ? "Iron Golem" : "Skeleton";
         const emoji = type === "iron_golem" ? emojiText(EMOJIS.ironGolem) : emojiText(EMOJIS.skeleton);
         await interaction.reply({
-            content: "✅ Updated " + emoji + " **" + label + " Spawner** stock to **" + quantity.toLocaleString("en-US") + "**.",
+            content: "✅ Updated the **existing Spawner Prices message**. " + emoji + " **" + label + " Spawner** stock is now **" + quantity.toLocaleString("en-US") + "**.",
             ephemeral: true
         });
         return true;
     }
 
     if (interaction.isChatInputCommand() && interaction.commandName === "spawnerprices") {
-        const embed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle(emojiText(EMOJIS.spawner) + " Spawner Buy & Sell")
-            .setDescription("Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.\n\n**Supported spawners**\n" + emojiText(EMOJIS.ironGolem) + " Iron Golem\n" + emojiText(EMOJIS.skeleton) + " Skeleton\n\nPrices are set by you — this panel does not use an unreliable market average.")
-            .setFooter({ text: "DSMP PvP • Spawner Market" });
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("spawner_prices_open").setLabel("Buy / Sell Spawners").setEmoji(EMOJIS.spawner).setStyle(ButtonStyle.Success)
-        );
-        await interaction.reply({ embeds: [embed], components: [row] });
+        const payload = buildSpawnerPanel();
+        const ref = loadPanelRef();
+        try {
+            if (ref && ref.channelId === interaction.channelId) {
+                const channel = await interaction.client.channels.fetch(ref.channelId);
+                const message = await channel.messages.fetch(ref.messageId);
+                await message.edit(payload);
+                await interaction.reply({ content: "✅ Updated the existing Spawner Prices message.", ephemeral: true });
+            } else {
+                const message = await interaction.channel.send(payload);
+                savePanelRef(interaction.channelId, message.id);
+                await interaction.reply({ content: "✅ Spawner Prices message created and saved. /editstock will update this message.", ephemeral: true });
+            }
+        } catch (error) {
+            console.error("Could not post or update Spawner Prices panel:", error);
+            await interaction.reply({ content: "❌ Couldn't create or update the Spawner Prices message. Check my channel permissions.", ephemeral: true });
+        }
         return true;
     }
 
