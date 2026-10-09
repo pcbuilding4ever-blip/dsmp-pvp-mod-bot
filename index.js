@@ -17,6 +17,7 @@ const {
 
 const fs = require("fs");
 const vouchSystem = require("./vouch-system");
+const spawnerPrices = require("./spawner-prices");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
@@ -393,7 +394,8 @@ new SlashCommandBuilder()
         .setDescription("Post the staff application panel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
-    ...vouchSystem.commands
+    ...vouchSystem.commands,
+    ...spawnerPrices.commands
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: "10" })
@@ -474,6 +476,7 @@ async function createTicket(interaction, ticketType) {
 
 client.on("interactionCreate", async interaction => {
     try {
+        if (await spawnerPrices.handleInteraction(interaction)) return;
         if (await vouchSystem.handleVouchInteraction(interaction)) return;
         if (interaction.isStringSelectMenu()) {
             if (interaction.customId === "settings_menu") {
