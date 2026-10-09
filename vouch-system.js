@@ -53,13 +53,13 @@ const commands = [
 ];
 
 function getReasonFlags(reason) {
-    const normalized = reason.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\\s+/g, " ").trim();
+    const normalized = reason.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
     const flags = [];
     if (normalized.length < 12) flags.push("very short reason");
     const generic = new Set(["good", "good guy", "legit", "trusted", "trust", "vouch", "nice", "nice guy", "real", "safe", "scammer", "scam", "fake", "yes", "no", "ok", "okay", "w", "valid", "best", "great"]);
     if (generic.has(normalized)) flags.push("generic / low-detail reason");
-    if (/^(.)\\1{4,}$/.test(normalized.replace(/\\s/g, ""))) flags.push("repeated characters");
-    if (/^(.)\\1{2,}(?:\\s+\\1\\1*)*$/.test(normalized)) flags.push("repetitive text");
+    if (/^(.)\1{4,}$/.test(normalized.replace(/\s/g, ""))) flags.push("repeated characters");
+    if (/^(.)\1{2,}(?:\s+\1\1*)*$/.test(normalized)) flags.push("repetitive text");
     return flags;
 }
 
@@ -317,8 +317,11 @@ async function handleVouchInteraction(interaction) {
         } else {
             await db().query("UPDATE vouches SET reviewed=TRUE, reviewed_by=$1, reviewed_at=NOW() WHERE id=$2", [interaction.user.id, id]);
         }
-        await interaction.reply({ content: parts[1] === "remove" ? "🗑️ Vouch removed; its trust-score impact is reversed." : "✅ Vouch kept and marked reviewed.", ephemeral: true });
-        await pendingReview(interaction);
+        await interaction.update({
+            content: parts[1] === "remove" ? "🗑️ Vouch removed; its trust-score impact is reversed." : "✅ Vouch kept and marked reviewed.",
+            embeds: [],
+            components: []
+        });
         return true;
     }
 
