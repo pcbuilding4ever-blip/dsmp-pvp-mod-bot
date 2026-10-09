@@ -32,16 +32,70 @@ async function initVouchDatabase() {
         "id BIGSERIAL PRIMARY KEY, guild_id TEXT NOT NULL, target_id TEXT NOT NULL, " +
         "giver_id TEXT NOT NULL, type TEXT NOT NULL CHECK (type IN ('normal','scam')), " +
         "reason TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), active BOOLEAN NOT NULL DEFAULT TRUE, " +
+        "flag_reason TEXT, reviewed BOOLEAN NOT NULL DEFAULT FALSE, reviewed_by TEXT, reviewed_at TIMESTAMPTZ, " +
         "UNIQUE (guild_id, target_id, giver_id, type))"
     );
+    await db().query("ALTER TABLE vouches ADD COLUMN IF NOT EXISTS flag_reason TEXT");
+    await db().query("ALTER TABLE vouches ADD COLUMN IF NOT EXISTS reviewed BOOLEAN NOT NULL DEFAULT FALSE");
+    await db().query("ALTER TABLE vouches ADD COLUMN IF NOT EXISTS reviewed_by TEXT");
+    await db().query("ALTER TABLE vouches ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ");
 }
 
 const commands = [
     new SlashCommandBuilder()
         .setName("vouchpanel")
         .setDescription("Post the DSMP PvP vouch panels")
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+    new SlashCommandBuilder()
+        .setName("vouchreview")
+        .setDescription("Review suspicious vouches flagged by the bot")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 ];
+
+function getReasonFlags(reason) {
+    const normalized = reason.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\\s+/g, " ").trim();
+    const flags = [];
+    if (normalized.length < 12) flags.push("very short reason");
+    const generic = new Set(["good", "good guy", "legit", "trusted", "trust", "vouch", "nice", "nice guy", "real", "safe", "scammer", "scam", "fake", "yes", "no", "ok", "okay", "w", "valid", "best", "great"]);
+    if (generic.has(normalized)) flags.push("generic / low-detail reason");
+    if (/^(.)\\1{4,}$/.test(normalized.replace(/\\s/g, ""))) flags.push("repeated characters");
+    if (/^(.)\\1{2,}(?:\\s+\\1\\1*)*$/.test(normalized)) flags.push("repetitive text");
+    return flags;
+}
+
+async function pendingReview(interaction, edit = false) {
+    const result = await db().query(
+        "SELECT id,guild_id,target_id,giver_id,type,reason,flag_reason,created_at FROM vouches WHERE guild_id=$1 AND active=TRUE AND flag_reason IS NOT NULL AND reviewed=FALSE ORDER BY created_at ASC LIMIT 1",
+        [interaction.guild.id]
+    );
+    if (!result.rows.length) {
+        const payload = { content: "✅ No vouches are waiting for review.", embeds: [], components: [] };
+        if (edit) await interaction.update(payload);
+        else await interaction.reply({ ...payload, ephemeral: true });
+        return;
+    }
+    const v = result.rows[0];
+    const embed = new EmbedBuilder()
+        .setColor(0xFEE75C)
+        .setTitle("🛡️ Vouch review queue")
+        .setDescription("**Flagged vouch #" + v.id + "** — this is an automated review flag, not a verdict.")
+        .addFields(
+            { name: "Type", value: v.type === "scam" ? "Scam vouch" : "Normal vouch", inline: true },
+            { name: "Target", value: "<@" + v.target_id + ">", inline: true },
+            { name: "Submitted by", value: "<@" + v.giver_id + ">", inline: true },
+            { name: "Flag reason", value: v.flag_reason },
+            { name: "Submitted reason", value: v.reason }
+        )
+        .setTimestamp(new Date(v.created_at));
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("vouch_review:keep:" + v.id).setLabel("Keep vouch").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("vouch_review:remove:" + v.id).setLabel("Remove vouch").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("vouch_review:next").setLabel("Next flag").setStyle(ButtonStyle.Secondary)
+    );
+    const payload = { embeds: [embed], components: [row] };
+    if (edit) await interaction.update(payload);
+    else await interaction.reply({ ...payload, ephemeral: true });
+}
 
 function makePanel(type) {
     const scam = type === "scam";
@@ -128,6 +182,11 @@ async function showProfile(interaction, targetId, page, edit) {
 }
 
 async function handleVouchInteraction(interaction) {
+    if (interaction.isChatInputCommand() && interaction.commandName === "vouchreview") {
+        await pendingReview(interaction);
+        return true;
+    }
+
     if (interaction.isChatInputCommand() && interaction.commandName === "vouchpanel") {
         await interaction.deferReply({ ephemeral: true });
         try {
@@ -209,6 +268,21 @@ async function handleVouchInteraction(interaction) {
                 await interaction.reply({ content: "⚠️ You've already submitted this type of vouch for that member.", ephemeral: true });
                 return true;
             }
+            const newVouchId = result.rows[0].id;
+            const reasonFlags = getReasonFlags(reason);
+            if (reasonFlags.length) {
+                await db().query("UPDATE vouches SET flag_reason=$1 WHERE id=$2", [reasonFlags.join(", "), newVouchId]);
+            }
+            const burst = await db().query(
+                "SELECT COUNT(*)::int AS count FROM vouches WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '10 minutes'",
+                [interaction.guild.id, targetId]
+            );
+            if (burst.rows[0].count >= 5) {
+                await db().query(
+                    "UPDATE vouches SET flag_reason=CONCAT_WS('; ', NULLIF(flag_reason,''), '5 or more vouches for this member within 10 minutes') WHERE guild_id=$1 AND target_id=$2 AND active=TRUE AND created_at >= NOW() - INTERVAL '10 minutes' AND reviewed=FALSE",
+                    [interaction.guild.id, targetId]
+                );
+            }
             const score = await trustFor(interaction.guild.id, targetId);
             await interaction.reply({
                 content: (type === "scam" ? "🚨 Scam vouch saved. Trust has decreased immediately." : "🤝 Vouch saved.") +
@@ -219,6 +293,32 @@ async function handleVouchInteraction(interaction) {
             console.error("Vouch save failed:", error);
             await interaction.reply({ content: "❌ Could not save this vouch. Ask an administrator to check the database connection.", ephemeral: true });
         }
+        return true;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("vouch_review:")) {
+        if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+            await interaction.reply({ content: "❌ You need the Moderate Members permission to review vouches.", ephemeral: true });
+            return true;
+        }
+        const parts = interaction.customId.split(":");
+        if (parts[1] === "next") {
+            await pendingReview(interaction, true);
+            return true;
+        }
+        const id = parts[2];
+        const lookup = await db().query("SELECT id FROM vouches WHERE id=$1 AND guild_id=$2 AND flag_reason IS NOT NULL AND reviewed=FALSE AND active=TRUE", [id, interaction.guild.id]);
+        if (!lookup.rowCount) {
+            await interaction.reply({ content: "That vouch has already been reviewed or is no longer active.", ephemeral: true });
+            return true;
+        }
+        if (parts[1] === "remove") {
+            await db().query("UPDATE vouches SET active=FALSE, reviewed=TRUE, reviewed_by=$1, reviewed_at=NOW() WHERE id=$2", [interaction.user.id, id]);
+        } else {
+            await db().query("UPDATE vouches SET reviewed=TRUE, reviewed_by=$1, reviewed_at=NOW() WHERE id=$2", [interaction.user.id, id]);
+        }
+        await interaction.reply({ content: parts[1] === "remove" ? "🗑️ Vouch removed; its trust-score impact is reversed." : "✅ Vouch kept and marked reviewed.", ephemeral: true });
+        await pendingReview(interaction);
         return true;
     }
 
