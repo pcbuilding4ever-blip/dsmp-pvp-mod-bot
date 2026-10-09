@@ -1,10 +1,29 @@
 const {
     SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder,
     ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder,
-    TextInputStyle, ChannelType
+    TextInputStyle, ChannelType, PermissionFlagsBits
 } = require("discord.js");
 
+const fs = require("fs");
 const TICKET_CHANNEL_ID = "1553777212170178570";
+const STOCK_FILE = "./spawner-stock.json";
+const DEFAULT_STOCK = { iron_golem: 0, skeleton: 0 };
+
+function loadStock() {
+    try {
+        const saved = JSON.parse(fs.readFileSync(STOCK_FILE, "utf8"));
+        return {
+            iron_golem: Number.isSafeInteger(saved.iron_golem) && saved.iron_golem >= 0 ? saved.iron_golem : 0,
+            skeleton: Number.isSafeInteger(saved.skeleton) && saved.skeleton >= 0 ? saved.skeleton : 0
+        };
+    } catch {
+        return { ...DEFAULT_STOCK };
+    }
+}
+
+function saveStock(stock) {
+    fs.writeFileSync(STOCK_FILE, JSON.stringify(stock, null, 2));
+}
 const EMOJIS = {
     spawner: { id: "1558199899319959783", name: "spawner" },
     skeleton: { id: "1558199920304070697", name: "skeletonspawneremoji" },
@@ -15,7 +34,25 @@ const emojiText = emoji => "<:" + emoji.name + ":" + emoji.id + ">";
 const commands = [
     new SlashCommandBuilder()
         .setName("spawnerprices")
-        .setDescription("Post the spawner buy/sell ticket panel")
+        .setDescription("Post the spawner buy/sell ticket panel"),
+    new SlashCommandBuilder()
+        .setName("editstock")
+        .setDescription("Edit the available spawner stock")
+        .addStringOption(option => option
+            .setName("spawner")
+            .setDescription("Which spawner's stock to edit")
+            .setRequired(true)
+            .addChoices(
+                { name: "Iron Golem", value: "iron_golem" },
+                { name: "Skeleton", value: "skeleton" }
+            ))
+        .addIntegerOption(option => option
+            .setName("quantity")
+            .setDescription("New stock quantity (use 0 for out of stock)")
+            .setRequired(true)
+            .setMinValue(0)
+            .setMaxValue(1000000))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ];
 
 async function createSpawnerTicket(interaction) {
@@ -59,6 +96,31 @@ async function createSpawnerTicket(interaction) {
 }
 
 async function handleInteraction(interaction) {
+    if (interaction.isChatInputCommand() && interaction.commandName === "editstock") {
+        if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
+            await interaction.reply({ content: "❌ You need Manage Server permission to edit spawner stock.", ephemeral: true });
+            return true;
+        }
+        const type = interaction.options.getString("spawner", true);
+        const quantity = interaction.options.getInteger("quantity", true);
+        const stock = loadStock();
+        stock[type] = quantity;
+        try {
+            saveStock(stock);
+        } catch (error) {
+            console.error("Could not save spawner stock:", error);
+            await interaction.reply({ content: "❌ I couldn't save the stock. Check the bot's file permissions.", ephemeral: true });
+            return true;
+        }
+        const label = type === "iron_golem" ? "Iron Golem" : "Skeleton";
+        const emoji = type === "iron_golem" ? emojiText(EMOJIS.ironGolem) : emojiText(EMOJIS.skeleton);
+        await interaction.reply({
+            content: "✅ Updated " + emoji + " **" + label + " Spawner** stock to **" + quantity.toLocaleString("en-US") + "**.",
+            ephemeral: true
+        });
+        return true;
+    }
+
     if (interaction.isChatInputCommand() && interaction.commandName === "spawnerprices") {
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
