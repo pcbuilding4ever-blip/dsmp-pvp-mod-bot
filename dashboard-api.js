@@ -81,7 +81,6 @@ function startDashboardApi(client) {
                 const temp = "./giveaways.json.tmp";
                 fs.writeFileSync(temp, JSON.stringify(all, null, 2), { mode: 0o600 });
                 fs.renameSync(temp, "./giveaways.json");
-                if (g.id && typeof g.id === "string" && giveawayTimers.has(g.id)) { clearTimeout(giveawayTimers.get(g.id)); giveawayTimers.delete(g.id); }
                 const channel = await client.channels.fetch(g.channelId);
                 const winnerText = g.winners.length ? g.winners.map(x => "<@" + x + ">").join(", ") : "No valid entrants.";
                 if (channel && channel.isTextBased()) {
@@ -109,7 +108,9 @@ function startDashboardApi(client) {
                 const temp = file + ".tmp";
                 fs.writeFileSync(temp, JSON.stringify({ iron_golem: stock.iron_golem, skeleton: stock.skeleton }, null, 2), { mode: 0o600 });
                 fs.renameSync(temp, file);
-                return sendJson(res, 200, { ok: true, stock: { iron_golem: stock.iron_golem, skeleton: stock.skeleton }, message: "Stock saved. Run /spawnerprices to refresh the public panel." });
+                let panelUpdated = false;
+                try { const spawnerPrices = require("./spawner-prices"); if (typeof spawnerPrices.updateSpawnerPanel === "function") { await spawnerPrices.updateSpawnerPanel(client); panelUpdated = true; } } catch (error) { console.warn("[Dashboard API] Stock saved, but public panel refresh failed:", error.message); }
+                return sendJson(res, 200, { ok: true, stock: { iron_golem: stock.iron_golem, skeleton: stock.skeleton }, panelUpdated, message: panelUpdated ? "Stock saved and public panel refreshed." : "Stock saved. Run /spawnerprices to refresh the public panel." });
             } catch (error) {
                 console.error("[Dashboard API] Stock save failed:", error.message);
                 return sendJson(res, 500, { error: "stock_save_failed" });
