@@ -56,15 +56,53 @@ function buildSpawnerPanel() {
     return { embeds: [embed], components: [row] };
 }
 
+async function findExistingSpawnerPanel(client) {
+    // Railway's local filesystem may reset between deployments. If the saved
+    // message reference is missing, recover the existing panel by its unique
+    // footer rather than posting a duplicate or forcing a slash command.
+    for (const guild of client.guilds.cache.values()) {
+        let channels;
+        try { channels = await guild.channels.fetch(); } catch { continue; }
+        for (const channel of channels.values()) {
+            if (!channel || !channel.isTextBased() || !channel.messages || typeof channel.messages.fetch !== "function") continue;
+            try {
+                const messages = await channel.messages.fetch({ limit: 50 });
+                const found = messages.find(message =>
+                    message.author?.id === client.user.id &&
+                    message.embeds?.some(embed => embed.footer?.text === "AnchorFall • Spawner Market")
+                );
+                if (found) {
+                    savePanelRef(channel.id, found.id);
+                    return found;
+                }
+            } catch {
+                // Skip channels where the bot cannot read message history.
+            }
+        }
+    }
+    return null;
+}
+
 async function updateSpawnerPanel(client) {
     const ref = loadPanelRef();
-    if (!ref || !ref.channelId || !ref.messageId) {
-        throw new Error("No saved Spawner Prices panel. Run /spawnerprices once to create and register it.");
+    if (ref && ref.channelId && ref.messageId) {
+        try {
+            const channel = await client.channels.fetch(ref.channelId);
+            if (channel && channel.isTextBased()) {
+                const message = await channel.messages.fetch(ref.messageId);
+                await message.edit(buildSpawnerPanel());
+                return;
+            }
+        } catch (error) {
+            console.warn("[Spawner panel] Saved message reference is stale; searching for existing panel:", error.message);
+        }
     }
-    const channel = await client.channels.fetch(ref.channelId);
-    if (!channel || !channel.isTextBased()) throw new Error("Saved Spawner Prices channel is unavailable.");
-    const message = await channel.messages.fetch(ref.messageId);
-    await message.edit(buildSpawnerPanel());
+
+    const existing = await findExistingSpawnerPanel(client);
+    if (!existing) {
+        throw new Error("I couldn't find an existing Spawner Prices panel in channels I can read. Check the bot's View Channel and Read Message History permissions.");
+    }
+    await existing.edit(buildSpawnerPanel());
 }
 const EMOJIS = {
     spawner: { id: "1558199899319959783", name: "spawner" },
