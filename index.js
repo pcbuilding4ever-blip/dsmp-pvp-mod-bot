@@ -25,6 +25,7 @@ const SERVER_INFO_CHANNEL_ID = "1553771441462186004";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
 const GIVEAWAYS_FILE = "./giveaways.json";
+const GAMES_FILE = "./games.json";
 const giveawayTimers = new Map();
 const spamTracker = new Map();
 const modLogChannelName = "mod-logs";
@@ -105,6 +106,14 @@ function saveWarnings(warnings) {
         warningsFile,
         JSON.stringify(warnings, null, 2)
     );
+}
+
+function loadGames() {
+    try { return JSON.parse(fs.readFileSync(GAMES_FILE, "utf8")); } catch { return {}; }
+}
+
+function saveGames(games) {
+    fs.writeFileSync(GAMES_FILE, JSON.stringify(games, null, 2));
 }
 
 function loadGiveaways() {
@@ -397,6 +406,12 @@ new SlashCommandBuilder()
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
+        .setName("game")
+        .setDescription("Start a prize competition for the community")
+        .addStringOption(option => option.setName("game").setDescription("Which game will people compete in?").setRequired(true).setMaxLength(100))
+        .addStringOption(option => option.setName("prize").setDescription("What is the prize?").setRequired(true).setMaxLength(200)),
+
+new SlashCommandBuilder()
         .setName("giveaway")
         .setDescription("Start a giveaway")
         .addUserOption(option => option.setName("host").setDescription("Who is hosting the giveaway?").setRequired(true))
@@ -640,6 +655,24 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId.startsWith("game_join:")) {
+                const gameId = interaction.customId.split(":")[1];
+                const games = loadGames();
+                const competition = games[gameId];
+                if (!competition || competition.ended) {
+                    await interaction.reply({ content: "❌ This competition has ended or no longer exists.", ephemeral: true });
+                    return;
+                }
+                if (competition.players.includes(interaction.user.id)) {
+                    await interaction.reply({ content: "⚠️ You're already signed up for this competition.", ephemeral: true });
+                    return;
+                }
+                competition.players.push(interaction.user.id);
+                saveGames(games);
+                await interaction.reply({ content: `✅ You're signed up to compete in **${competition.game}** for **${competition.prize}**! The host will share match details.`, ephemeral: true });
+                return;
+            }
+
             if (interaction.customId.startsWith("giveaway_enter:")) {
                 const giveawayId = interaction.customId.split(":")[1];
                 const giveaways = loadGiveaways();
@@ -1027,6 +1060,58 @@ client.on("interactionCreate", async interaction => {
                 content: "✅ Ticket panel posted.",
                 ephemeral: true
             });
+            return;
+        }
+
+        if (interaction.commandName === "game") {
+            const member = interaction.member;
+            const isModerator = member?.permissions?.has(PermissionFlagsBits.ModerateMembers)
+                || member?.permissions?.has(PermissionFlagsBits.ManageGuild)
+                || member?.roles?.cache?.some(role => role.name.toLowerCase() === "giveaway mod");
+
+            if (!isModerator) {
+                await interaction.reply({ content: "❌ Only moderators or members with the Giveaway Mod role can start a competition.", ephemeral: true });
+                return;
+            }
+
+            const gameName = interaction.options.getString("game", true).trim();
+            const prize = interaction.options.getString("prize", true).trim();
+            const gameId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+            const games = loadGames();
+            const competition = {
+                id: gameId,
+                game: gameName,
+                prize,
+                hostId: interaction.user.id,
+                channelId: interaction.channelId,
+                messageId: null,
+                players: [],
+                createdAt: Date.now(),
+                ended: false
+            };
+
+            const embed = {
+                color: 0x7c3aed,
+                title: "🎮 ANCHORFALL COMPETITION",
+                description: [
+                    `**🕹️ Game:** ${gameName}`,
+                    `**🎁 Prize:** ${prize}`,
+                    `**🎤 Hosted by:** <@${interaction.user.id}>`,
+                    "",
+                    "Press **Join Competition** below if you want to compete!",
+                    "The host will organise the match and announce the winner."
+                ].join("\\n\\n"),
+                footer: { text: "AnchorFall • Break the Anchor. Own the Void." }
+            };
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`game_join:${gameId}`).setLabel("Join Competition").setEmoji("🎮").setStyle(ButtonStyle.Primary)
+            );
+
+            const message = await interaction.channel.send({ embeds: [embed], components: [row] });
+            competition.messageId = message.id;
+            games[gameId] = competition;
+            saveGames(games);
+            await interaction.reply({ content: `✅ Competition posted! Game: **${gameName}** • Prize: **${prize}** • ID: ${gameId}`, ephemeral: true });
             return;
         }
 
