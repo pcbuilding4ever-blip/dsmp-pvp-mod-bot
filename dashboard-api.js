@@ -158,6 +158,33 @@ function startDashboardApi(client) {
         if (req.method === "GET" && url.pathname === "/api/commands") {
             return sendJson(res, 200, { ok: true, commands: ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"] });
         }
+        if (req.method === "GET" && url.pathname === "/api/tickets") {
+            const parentId = "1553777212170178570";
+            try {
+                const parent = await client.channels.fetch(parentId);
+                if (!parent || !parent.isTextBased() || !parent.threads) {
+                    return sendJson(res, 200, { ok: true, tickets: [], openCount: 0, message: "Ticket channel is unavailable." });
+                }
+                const active = await parent.threads.fetchActive();
+                const tickets = active.threads
+                    .filter(thread => thread.name.startsWith("ticket-"))
+                    .map(thread => ({
+                        id: thread.id,
+                        name: thread.name,
+                        parentId: thread.parentId,
+                        createdAt: thread.createdAt ? thread.createdAt.toISOString() : null,
+                        archived: Boolean(thread.archived),
+                        memberCount: thread.memberCount ?? null,
+                        url: "https://discord.com/channels/" + thread.guildId + "/" + thread.id
+                    }))
+                    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+                    .slice(0, 100);
+                return sendJson(res, 200, { ok: true, tickets, openCount: tickets.length, checkedAt: new Date().toISOString() });
+            } catch (error) {
+                console.error("[Dashboard API] Ticket fetch failed:", error.message);
+                return sendJson(res, 502, { error: "ticket_fetch_failed" });
+            }
+        }
         if (req.method === "GET" && url.pathname === "/api/guilds") {
             return sendJson(res, 200, { ok: true, guilds: client.guilds.cache.map(guild => ({ id: guild.id, name: guild.name, memberCount: guild.memberCount })) });
         }
