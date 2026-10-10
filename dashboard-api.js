@@ -66,14 +66,14 @@ function startDashboardApi(client) {
             try { input = await readJson(req); } catch (e) { return sendJson(res, e.message === "body_too_large" ? 413 : 400, { error: e.message }); }
             const id = typeof input.id === "string" ? input.id : "";
             const action = input.action;
-            if (!/^\\d{1,30}$/.test(id) || !["end", "redraw"].includes(action)) return sendJson(res, 400, { error: "invalid_giveaway_action" });
+            if (!/^\d{1,30}$/.test(id) || !["end", "redraw"].includes(action)) return sendJson(res, 400, { error: "invalid_giveaway_action" });
             let all;
             try { all = JSON.parse(fs.readFileSync("./giveaways.json", "utf8")); } catch { return sendJson(res, 500, { error: "giveaways_unavailable" }); }
             const g = all[id];
             if (!g) return sendJson(res, 404, { error: "giveaway_not_found" });
             if (action === "end" && g.ended) return sendJson(res, 409, { error: "giveaway_already_ended" });
             if (action === "redraw" && !g.ended) return sendJson(res, 409, { error: "giveaway_not_ended" });
-            const entrants = [...new Set(Array.isArray(g.entries) ? g.entries.filter(x => typeof x === "string" && /^\\d{17,20}$/.test(x)) : [])];
+            const entrants = [...new Set(Array.isArray(g.entries) ? g.entries.filter(x => typeof x === "string" && /^\d{17,20}$/.test(x)) : [])];
             for (let i = entrants.length - 1; i > 0; i--) { const k = crypto.randomInt(i + 1); [entrants[i], entrants[k]] = [entrants[k], entrants[i]]; }
             g.winners = entrants.slice(0, Math.max(0, Math.min(Number(g.winnerCount) || 1, entrants.length)));
             g.ended = true;
@@ -118,7 +118,7 @@ function startDashboardApi(client) {
         }
         if (req.method === "GET" && url.pathname === "/api/vouches") {
             const guildId = url.searchParams.get("guildId") || "";
-            if (!/^\\d{17,20}$/.test(guildId)) return sendJson(res, 400, { error: "guild_id_required" });
+            if (!/^\d{17,20}$/.test(guildId)) return sendJson(res, 400, { error: "guild_id_required" });
             try {
                 const { Pool } = require("pg");
                 if (!process.env.DATABASE_URL) return sendJson(res, 503, { error: "database_not_configured" });
