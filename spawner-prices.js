@@ -40,7 +40,7 @@ function buildSpawnerPanel() {
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle(emojiText(EMOJIS.spawner) + " Spawner Buy & Sell")
-        .setDescription("Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.\n\n**Available stock**\n" + emojiText(EMOJIS.ironGolem) + " Iron Golem: **" + stock.iron_golem.toLocaleString("en-US") + "**\n" + emojiText(EMOJIS.skeleton) + " Skeleton: **" + stock.skeleton.toLocaleString("en-US") + "**\n\nPrices are set by you — this panel does not use an unreliable market average.")
+        .setDescription("Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.\n\n**Available stock**\n" + emojiText(EMOJIS.ironGolem) + " Iron Golem: **" + stock.iron_golem.toLocaleString("en-US") + "**\n" + emojiText(EMOJIS.skeleton) + " Skeleton: **" + stock.skeleton.toLocaleString("en-US") + "**")
         .setFooter({ text: "AnchorFall • Spawner Market" });
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("spawner_prices_open").setLabel("Buy / Sell Spawners").setEmoji(EMOJIS.spawner).setStyle(ButtonStyle.Success)
