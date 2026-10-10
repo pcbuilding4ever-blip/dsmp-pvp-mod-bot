@@ -44,18 +44,19 @@ function startDashboardApi(client) {
             return sendJson(res, 200, { ok: true, ready: client.isReady(), bot: client.user ? { username: client.user.username, id: client.user.id } : null, guildCount: client.guilds.cache.size, uptimeSeconds: process.uptime(), checkedAt: new Date().toISOString() });
         }
         if (req.method === "GET" && url.pathname === "/api/guilds") {
-            return sendJson(res, 200, { guilds: client.guilds.cache.map(guild => ({ id: guild.id, name: guild.name, memberCount: guild.memberCount })) });
+            return sendJson(res, 200, { ok: true, guilds: client.guilds.cache.map(guild => ({ id: guild.id, name: guild.name, memberCount: guild.memberCount })) });
         }
         if (req.method === "GET" && url.pathname === "/api/channels") {
             const guildId = url.searchParams.get("guildId") || "";
             const guild = client.guilds.cache.get(guildId);
-            if (!guild) return sendJson(res, 404, { error: "guild_not_found" });
+            if (!guild) return sendJson(res, 404, { error: "guild_not_found", message: "The bot cannot find that server. Check that it is still a member." });
+            try { await guild.channels.fetch(); } catch (error) { console.error("[Dashboard API] Channel fetch failed:", error.message); return sendJson(res, 502, { error: "channel_fetch_failed", message: "Discord did not return the server channels. Check the bot connection and server access." }); }
             const channels = guild.channels.cache
                 .filter(ch => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(ch.type))
                 .map(ch => ({ id: ch.id, name: ch.name, type: ch.type, canSend: Boolean(ch.permissionsFor(client.user)?.has(PermissionFlagsBits.ViewChannel) && ch.permissionsFor(client.user)?.has(PermissionFlagsBits.SendMessages)) }))
                 .filter(ch => ch.canSend)
                 .sort((a, b) => a.name.localeCompare(b.name));
-            return sendJson(res, 200, { channels });
+            return sendJson(res, 200, { ok: true, channels });
         }
         if (req.method === "POST" && url.pathname === "/api/send-message") {
             let data;
