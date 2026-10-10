@@ -1,5 +1,6 @@
 const {
     Client,
+    AttachmentBuilder,
     GatewayIntentBits,
     REST,
     Routes,
@@ -713,9 +714,65 @@ client.on("interactionCreate", async interaction => {
                 return;
             }
 
-            await interaction.reply("🔒 **Ticket closed.** This thread is now archived.");
-            await interaction.channel.setLocked(true);
-            await interaction.channel.setArchived(true);
+            await interaction.deferReply({ ephemeral: true });
+
+            const ticketThread = interaction.channel;
+            const transcriptChannelId = "1557830798609223760";
+
+            try {
+                const transcriptChannel = await interaction.guild.channels.fetch(transcriptChannelId);
+                if (!transcriptChannel || !transcriptChannel.isTextBased()) {
+                    throw new Error("Transcript log channel not found or not text-based.");
+                }
+
+                const allMessages = [];
+                let before;
+                while (true) {
+                    const batch = await ticketThread.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+                    if (batch.size === 0) break;
+                    allMessages.push(...batch.values());
+                    before = batch.last().id;
+                    if (batch.size < 100) break;
+                }
+
+                allMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+                const transcriptLines = [
+                    `Ticket transcript: #${ticketThread.name}`,
+                    `Ticket ID: ${ticketThread.id}`,
+                    `Closed by: ${interaction.user.tag} (${interaction.user.id})`,
+                    `Closed at: ${new Date().toISOString()}`,
+                    "=".repeat(72),
+                    ""
+                ];
+
+                for (const msg of allMessages) {
+                    const timestamp = new Date(msg.createdTimestamp).toISOString();
+                    const author = msg.author ? `${msg.author.tag} (${msg.author.id})` : "Unknown author";
+                    transcriptLines.push(`[${timestamp}] ${author}:`);
+                    if (msg.content) transcriptLines.push(msg.content);
+                    for (const attachment of msg.attachments.values()) {
+                        transcriptLines.push(`Attachment: ${attachment.name || "file"} — ${attachment.url}`);
+                    }
+                    if (msg.embeds.length) transcriptLines.push(`[Message contains ${msg.embeds.length} embed(s)]`);
+                    if (msg.stickers.size) transcriptLines.push(`[Stickers: ${[...msg.stickers.values()].map(s => s.name).join(", ")}]`);
+                    transcriptLines.push("");
+                }
+
+                const transcript = Buffer.from(transcriptLines.join("\n"), "utf8");
+                const safeName = ticketThread.name.replace(/[^a-z0-9-_]/gi, "-").slice(0, 80);
+                await transcriptChannel.send({
+                    content: `📄 Transcript for **#${ticketThread.name}** (closed by <@${interaction.user.id}>)`,
+                    files: [new AttachmentBuilder(transcript, { name: `${safeName}-transcript.txt` })]
+                });
+            } catch (error) {
+                console.error("❌ Ticket transcript failed:", error);
+                await interaction.editReply("⚠️ I couldn't save the transcript. Check the bot's access to the logs channel; the ticket has not been archived.");
+                return;
+            }
+
+            await ticketThread.setLocked(true);
+            await ticketThread.setArchived(true);
+            await interaction.editReply("🔒 Ticket closed and transcript saved to the logs channel.");
             return;
         }
 
