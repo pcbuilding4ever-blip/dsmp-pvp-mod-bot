@@ -499,10 +499,15 @@ async function createTicket(interaction, ticketType) {
 
     await thread.send({
         content:
-            `🎫 **${ticketType} Ticket**\n\n` +
+            `<@&1553780133867814982> 🎫 **New ${ticketType} Ticket**\n\n` +
             `Opened by <@${interaction.user.id}>.\n\n` +
-            "Please explain what you need help with. Staff will be able to respond here.\n\n" +
+            "Please explain what you need help with. Staff, please respond when available.\n\n" +
             "Use **Close Ticket** when you are finished.",
+        allowedMentions: {
+            parse: [],
+            users: [interaction.user.id],
+            roles: ["1553780133867814982"]
+        },
         components: [ticketButtons]
     });
 
