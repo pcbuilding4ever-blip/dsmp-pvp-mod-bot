@@ -279,4 +279,4 @@ async function handleInteraction(interaction) {
     return false;
 }
 
-module.exports = { commands, handleInteraction };
+module.exports = { commands, handleInteraction, updateSpawnerPanel };
