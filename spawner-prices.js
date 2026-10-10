@@ -163,15 +163,17 @@ async function handleInteraction(interaction) {
         const payload = buildSpawnerPanel();
         const ref = loadPanelRef();
         try {
-            if (ref && ref.channelId === interaction.channelId) {
+            if (ref && ref.channelId && ref.messageId) {
+                // Always edit the registered panel, even if /spawnerprices is run in another channel.
                 const channel = await interaction.client.channels.fetch(ref.channelId);
+                if (!channel || !channel.isTextBased()) throw new Error("Saved Spawner Prices channel is unavailable.");
                 const message = await channel.messages.fetch(ref.messageId);
                 await message.edit(payload);
-                await interaction.reply({ content: "✅ Updated the existing Spawner Prices message.", ephemeral: true });
+                await interaction.reply({ content: "✅ Edited the existing Spawner Prices message.", ephemeral: true });
             } else {
                 const message = await interaction.channel.send(payload);
                 savePanelRef(interaction.channelId, message.id);
-                await interaction.reply({ content: "✅ Spawner Prices message created and saved. /editstock will update this message.", ephemeral: true });
+                await interaction.reply({ content: "✅ Spawner Prices message created and saved. Future /spawnerprices and /editstock runs will edit this message.", ephemeral: true });
             }
         } catch (error) {
             console.error("Could not post or update Spawner Prices panel:", error);
