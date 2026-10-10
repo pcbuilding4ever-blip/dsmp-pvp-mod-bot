@@ -208,6 +208,11 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     new SlashCommandBuilder()
+        .setName("giveawayinfo")
+        .setDescription("Post giveaway entry and prize-claim rules")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
         .setName("warnings")
         .setDescription("View a member's warning history")
         .addUserOption(option =>
@@ -873,6 +878,50 @@ client.on("interactionCreate", async interaction => {
             } catch (error) {
                 console.error("Failed to post server info:", error);
                 await interaction.editReply("❌ I couldn't post the server information. Check that I have permission to view and send messages in the server-info channel.");
+            }
+            return;
+        }
+
+        if (interaction.commandName === "giveawayinfo") {
+            await interaction.deferReply({ ephemeral: true });
+            try {
+                const giveawayInfoChannel = await interaction.guild.channels.fetch("1553771441462186004");
+                if (!giveawayInfoChannel || !giveawayInfoChannel.isTextBased()) {
+                    await interaction.editReply("❌ I couldn't find the server-info channel.");
+                    return;
+                }
+
+                const giveawayInfoEmbed = {
+                    color: 0x7c3aed,
+                    title: "🎁 AnchorFall Giveaway Info & Claim Rules",
+                    description: [
+                        "**🎟️ Entering giveaways**",
+                        "• Follow the entry instructions listed in each giveaway.",
+                        "• One genuine entry per person. Alternate accounts, fake entries, or attempts to manipulate the result are not allowed.",
+                        "• Make sure you meet any requirements stated in the giveaway post.",
+                        "",
+                        "**🏆 If you win**",
+                        "• Winners are selected using the method stated in the giveaway.",
+                        "• Check Discord messages and the giveaway post so you don't miss the result.",
+                        "• You must claim your prize within the deadline stated by the host. If no deadline is listed, contact staff promptly.",
+                        "• Staff may ask you to verify your win before giving you the prize.",
+                        "",
+                        "**🎫 Claiming your prize**",
+                        "• Open a giveaway prize-claim ticket using the bot's provided claim option, or contact staff if you cannot access it.",
+                        "• Only the actual winner can claim the prize. Do not share claim tickets or pretend to be a winner.",
+                        "• Be patient while staff verify the result and arrange the prize.",
+                        "",
+                        "**⚠️ Fair play**",
+                        "Giveaway abuse, fake accounts, or dishonest claims may lead to disqualification. Staff may disqualify entries that break these rules."
+                    ].join("\n"),
+                    footer: { text: "AnchorFall • Good luck, and play fair!" }
+                };
+
+                await giveawayInfoChannel.send({ embeds: [giveawayInfoEmbed] });
+                await interaction.editReply("✅ Giveaway information posted in <#" + "1553771441462186004" + ">.");
+            } catch (error) {
+                console.error("Failed to post giveaway info:", error);
+                await interaction.editReply("❌ I couldn't post the giveaway information. Check the bot's channel permissions.");
             }
             return;
         }
