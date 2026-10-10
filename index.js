@@ -21,6 +21,7 @@ const spawnerPrices = require("./spawner-prices");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const RULES_CHANNEL_ID = "1550441311621095495";
+const SERVER_INFO_CHANNEL_ID = "1553771441462186004";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
 const GIVEAWAYS_FILE = "./giveaways.json";
@@ -199,6 +200,11 @@ const commands = [
     new SlashCommandBuilder()
         .setName("rules")
         .setDescription("Post the server rules in the rules channel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
+        .setName("serverinfo")
+        .setDescription("Post AnchorFall server information in the server-info channel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     new SlashCommandBuilder()
@@ -834,6 +840,39 @@ client.on("interactionCreate", async interaction => {
             } catch (error) {
                 console.error("Failed to post rules:", error);
                 await interaction.editReply("❌ I couldn't post the rules. Check that I have permission to view and send messages in the rules channel.");
+            }
+            return;
+        }
+
+
+        if (interaction.commandName === "serverinfo") {
+            await interaction.deferReply({ ephemeral: true });
+            try {
+                const infoChannel = await interaction.guild.channels.fetch(SERVER_INFO_CHANNEL_ID);
+                if (!infoChannel || !infoChannel.isTextBased()) {
+                    await interaction.editReply("❌ I couldn't find the server-info channel. Check the channel ID.");
+                    return;
+                }
+
+                const infoEmbed = {
+                    color: 0x7c3aed,
+                    title: "⚔️ Welcome to AnchorFall",
+                    description: [
+                        "**Welcome!** AnchorFall is a community for meeting players, finding teammates, and enjoying competitive Minecraft PvP.",
+                        "**🤝 Community** — Be respectful, make friends, and find people to play with.",
+                        "**🛒 Spawner Market** — Use the buy/sell spawner panel if you want to trade. Check the details before agreeing to a deal.",
+                        "**🎫 Need help?** — Open a support ticket if you need staff assistance.",
+                        "**📜 Read the rules** — Please read the server rules and follow them while participating in the community.",
+                        "**💜 Have fun!** — Keep things fair, help the community grow, and enjoy your time here."
+                    ].join("\n\n"),
+                    footer: { text: "AnchorFall • Break the Anchor. Own the Void." }
+                };
+
+                await infoChannel.send({ embeds: [infoEmbed] });
+                await interaction.editReply("✅ Server information posted in <#" + SERVER_INFO_CHANNEL_ID + ">.");
+            } catch (error) {
+                console.error("Failed to post server info:", error);
+                await interaction.editReply("❌ I couldn't post the server information. Check that I have permission to view and send messages in the server-info channel.");
             }
             return;
         }
