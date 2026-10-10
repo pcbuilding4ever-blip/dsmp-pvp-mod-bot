@@ -20,6 +20,7 @@ const vouchSystem = require("./vouch-system");
 const spawnerPrices = require("./spawner-prices");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
+const RULES_CHANNEL_ID = "1550441311621095495";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
 const GIVEAWAYS_FILE = "./giveaways.json";
@@ -194,6 +195,11 @@ const commands = [
     new SlashCommandBuilder()
         .setName("ping")
         .setDescription("Check if the bot is online"),
+
+    new SlashCommandBuilder()
+        .setName("rules")
+        .setDescription("Post the server rules in the rules channel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     new SlashCommandBuilder()
         .setName("warnings")
@@ -793,6 +799,42 @@ client.on("interactionCreate", async interaction => {
 
         if (interaction.commandName === "ping") {
             await interaction.reply("🏓 Pong!");
+            return;
+        }
+
+        if (interaction.commandName === "rules") {
+            await interaction.deferReply({ ephemeral: true });
+            try {
+                const rulesChannel = await interaction.guild.channels.fetch(RULES_CHANNEL_ID);
+                if (!rulesChannel || !rulesChannel.isTextBased()) {
+                    await interaction.editReply("❌ I couldn't find the rules channel. Check the channel ID.");
+                    return;
+                }
+
+                const rulesEmbed = {
+                    color: 0x7c3aed,
+                    title: "📜 AnchorFall Server Rules",
+                    description: [
+                        "**1. Respect everyone** — No harassment, hate speech, threats, or targeted abuse.",
+                        "**2. No spam** — Avoid flooding chat, excessive pings, or unsolicited advertising.",
+                        "**3. No scams or deception** — Be honest in trades and vouches. Never impersonate others.",
+                        "**4. Keep content appropriate** — No NSFW, illegal content, or disturbing material.",
+                        "**5. Use channels correctly** — Keep messages in the relevant channels and follow channel-specific instructions.",
+                        "**6. No exploiting** — Don't abuse bugs, cheats, or exploits to harm the community.",
+                        "**7. Listen to staff** — Follow moderator instructions and use tickets or reports for disputes.",
+                        "**8. Protect your account** — Never share passwords, tokens, or private personal information.",
+                        "**9. Trade at your own risk** — Check terms carefully before agreeing to a deal.",
+                        "**10. Use common sense** — Staff may act on behaviour that seriously disrupts the community."
+                    ].join("\\n\\n"),
+                    footer: { text: "AnchorFall • Stay fair. Fight smart." }
+                };
+
+                await rulesChannel.send({ embeds: [rulesEmbed] });
+                await interaction.editReply("✅ Rules posted in <#" + RULES_CHANNEL_ID + ">.");
+            } catch (error) {
+                console.error("Failed to post rules:", error);
+                await interaction.editReply("❌ I couldn't post the rules. Check that I have permission to view and send messages in the rules channel.");
+            }
             return;
         }
 
