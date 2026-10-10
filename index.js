@@ -885,7 +885,7 @@ client.on("interactionCreate", async interaction => {
         if (interaction.commandName === "giveawayinfo") {
             await interaction.deferReply({ ephemeral: true });
             try {
-                const giveawayInfoChannel = await interaction.guild.channels.fetch("1553771441462186004");
+                const giveawayInfoChannel = await interaction.guild.channels.fetch("1553777764472201237");
                 if (!giveawayInfoChannel || !giveawayInfoChannel.isTextBased()) {
                     await interaction.editReply("❌ I couldn't find the server-info channel.");
                     return;
