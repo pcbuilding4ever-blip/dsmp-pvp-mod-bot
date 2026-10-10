@@ -825,7 +825,7 @@ client.on("interactionCreate", async interaction => {
                         "**8. Protect your account** — Never share passwords, tokens, or private personal information.",
                         "**9. Trade at your own risk** — Check terms carefully before agreeing to a deal.",
                         "**10. Use common sense** — Staff may act on behaviour that seriously disrupts the community."
-                    ].join("\\n\\n"),
+                    ].join("\n\n"),
                     footer: { text: "AnchorFall • Stay fair. Fight smart." }
                 };
 
