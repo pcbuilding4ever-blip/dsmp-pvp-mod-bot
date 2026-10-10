@@ -2,6 +2,7 @@
 
 const http = require("node:http");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
 
 function constantTimeTokenMatch(provided, expected) {
@@ -42,6 +43,32 @@ function startDashboardApi(client) {
 
         if (req.method === "GET" && url.pathname === "/api/status") {
             return sendJson(res, 200, { ok: true, ready: client.isReady(), bot: client.user ? { username: client.user.username, id: client.user.id } : null, guildCount: client.guilds.cache.size, uptimeSeconds: process.uptime(), checkedAt: new Date().toISOString() });
+        }
+        if (req.method === "GET" && url.pathname === "/api/members") {
+            const guildId = url.searchParams.get("guildId") || "";
+            const query = (url.searchParams.get("q") || "").toLowerCase().slice(0, 80);
+            const guild = client.guilds.cache.get(guildId);
+            if (!guild) return sendJson(res, 404, { ok: false, error: "guild_not_found" });
+            try {
+                const members = await guild.members.fetch({ limit: 1000 });
+                const results = members.filter(m => !m.user.bot && (!query || m.user.username.toLowerCase().includes(query) || m.displayName.toLowerCase().includes(query) || m.id.includes(query))).first(100);
+                return sendJson(res, 200, { ok: true, members: results.map(m => ({ id: m.id, username: m.user.username, displayName: m.displayName, joinedAt: m.joinedAt ? m.joinedAt.toISOString() : null, roles: m.roles.cache.filter(r => r.id !== guild.id).map(r => r.name).slice(0, 20) })) });
+            } catch (error) { console.error("[Dashboard API] Member fetch failed:", error.message); return sendJson(res, 502, { ok: false, error: "member_fetch_failed" }); }
+        }
+        if (req.method === "GET" && url.pathname === "/api/giveaways") {
+            try {
+                const data = JSON.parse(fs.readFileSync("./giveaways.json", "utf8"));
+                return sendJson(res, 200, { ok: true, giveaways: Object.values(data).map(g => ({ id: g.id, prize: g.prize, hostId: g.hostId, channelId: g.channelId, messageId: g.messageId, winnerCount: g.winnerCount, entries: (g.entries || []).length, winners: g.winners || [], endAt: g.endAt, ended: Boolean(g.ended) })).sort((a,b) => Number(b.endAt || 0) - Number(a.endAt || 0)).slice(0, 100) });
+            } catch { return sendJson(res, 200, { ok: true, giveaways: [] }); }
+        }
+        if (req.method === "GET" && url.pathname === "/api/spawners") {
+            try {
+                const data = JSON.parse(fs.readFileSync("./spawner-stock.json", "utf8"));
+                return sendJson(res, 200, { ok: true, stock: { iron_golem: Number.isSafeInteger(data.iron_golem) ? data.iron_golem : 0, skeleton: Number.isSafeInteger(data.skeleton) ? data.skeleton : 0 } });
+            } catch { return sendJson(res, 200, { ok: true, stock: { iron_golem: 0, skeleton: 0 } }); }
+        }
+        if (req.method === "GET" && url.pathname === "/api/commands") {
+            return sendJson(res, 200, { ok: true, commands: ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"] });
         }
         if (req.method === "GET" && url.pathname === "/api/guilds") {
             return sendJson(res, 200, { ok: true, guilds: client.guilds.cache.map(guild => ({ id: guild.id, name: guild.name, memberCount: guild.memberCount })) });
