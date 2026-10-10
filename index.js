@@ -18,6 +18,7 @@ const {
 const fs = require("fs");
 const vouchSystem = require("./vouch-system");
 const spawnerPrices = require("./spawner-prices");
+const { startDashboardApi } = require("./dashboard-api");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const RULES_CHANNEL_ID = "1550441311621095495";
@@ -69,6 +70,8 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ]
 });
+
+startDashboardApi(client);
 
 const warningsFile = "./warnings.json";
 
