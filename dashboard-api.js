@@ -61,11 +61,45 @@ function startDashboardApi(client) {
                 return sendJson(res, 200, { ok: true, giveaways: Object.values(data).map(g => ({ id: g.id, prize: g.prize, hostId: g.hostId, channelId: g.channelId, messageId: g.messageId, winnerCount: g.winnerCount, entries: (g.entries || []).length, winners: g.winners || [], endAt: g.endAt, ended: Boolean(g.ended) })).sort((a,b) => Number(b.endAt || 0) - Number(a.endAt || 0)).slice(0, 100) });
             } catch { return sendJson(res, 200, { ok: true, giveaways: [] }); }
         }
-        if (req.method === "GET" && url.pathname === "/api/spawners") {
+        if (url.pathname === "/api/spawners" && req.method === "GET") {
             try {
                 const data = JSON.parse(fs.readFileSync("./spawner-stock.json", "utf8"));
-                return sendJson(res, 200, { ok: true, stock: { iron_golem: Number.isSafeInteger(data.iron_golem) ? data.iron_golem : 0, skeleton: Number.isSafeInteger(data.skeleton) ? data.skeleton : 0 } });
+                return sendJson(res, 200, { ok: true, stock: { iron_golem: Number.isSafeInteger(data.iron_golem) && data.iron_golem >= 0 ? data.iron_golem : 0, skeleton: Number.isSafeInteger(data.skeleton) && data.skeleton >= 0 ? data.skeleton : 0 } });
             } catch { return sendJson(res, 200, { ok: true, stock: { iron_golem: 0, skeleton: 0 } }); }
+        }
+        if (url.pathname === "/api/spawners" && req.method === "POST") {
+            let data;
+            try { data = await readJson(req); } catch (e) { return sendJson(res, e.message === "body_too_large" ? 413 : 400, { error: e.message }); }
+            const stock = data && data.stock;
+            if (!stock || !Number.isSafeInteger(stock.iron_golem) || stock.iron_golem < 0 || stock.iron_golem > 1000000 || !Number.isSafeInteger(stock.skeleton) || stock.skeleton < 0 || stock.skeleton > 1000000) {
+                return sendJson(res, 400, { error: "invalid_stock", message: "Stock values must be whole numbers between 0 and 1,000,000." });
+            }
+            try {
+                const file = "./spawner-stock.json";
+                const temp = file + ".tmp";
+                fs.writeFileSync(temp, JSON.stringify({ iron_golem: stock.iron_golem, skeleton: stock.skeleton }, null, 2), { mode: 0o600 });
+                fs.renameSync(temp, file);
+                return sendJson(res, 200, { ok: true, stock: { iron_golem: stock.iron_golem, skeleton: stock.skeleton }, message: "Stock saved. Run /spawnerprices to refresh the public panel." });
+            } catch (error) {
+                console.error("[Dashboard API] Stock save failed:", error.message);
+                return sendJson(res, 500, { error: "stock_save_failed" });
+            }
+        }
+        if (req.method === "GET" && url.pathname === "/api/vouches") {
+            const guildId = url.searchParams.get("guildId") || "";
+            if (!/^\\d{17,20}$/.test(guildId)) return sendJson(res, 400, { error: "guild_id_required" });
+            try {
+                const { Pool } = require("pg");
+                if (!process.env.DATABASE_URL) return sendJson(res, 503, { error: "database_not_configured" });
+                const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false }, max: 2 });
+                try {
+                    const result = await pool.query("SELECT id, target_id, giver_id, type, reason, created_at, active, flag_reason, reviewed FROM vouches WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100", [guildId]);
+                    return sendJson(res, 200, { ok: true, vouches: result.rows.map(v => ({ id: String(v.id), targetId: v.target_id, giverId: v.giver_id, type: v.type, reason: v.reason, createdAt: v.created_at, active: v.active, flagReason: v.flag_reason, reviewed: v.reviewed })) });
+                } finally { await pool.end(); }
+            } catch (error) {
+                console.error("[Dashboard API] Vouch query failed:", error.message);
+                return sendJson(res, 502, { error: "vouch_query_failed" });
+            }
         }
         if (req.method === "GET" && url.pathname === "/api/commands") {
             return sendJson(res, 200, { ok: true, commands: ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"] });
