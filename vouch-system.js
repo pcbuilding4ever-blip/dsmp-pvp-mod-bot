@@ -298,7 +298,7 @@ async function handleVouchInteraction(interaction) {
                                         { name: "Flag reason", value: flagged.flag_reason },
                                         { name: "Submitted reason", value: flagged.reason }
                                     )
-                                    .setFooter({ text: "Staff can run /vouchreview to review flagged vouches." })
+                                    .setFooter({ text: "AnchorFall • Community Vouches" })
                                     .setTimestamp(new Date(flagged.created_at))]
                             });
                         }
@@ -350,7 +350,7 @@ async function handleVouchInteraction(interaction) {
                                     { name: "Flag reason", value: thisVouchFlag },
                                     { name: "Submitted reason", value: reason }
                                 )
-                                .setFooter({ text: "Staff can run /vouchreview to review flagged vouches." })
+                                .setFooter({ text: "AnchorFall • Community Vouches" })
                                 .setTimestamp()]
                         });
                     }
