@@ -90,6 +90,29 @@ function startDashboardApi(client) {
                 return sendJson(res, 200, { ok: true, giveaway: { id, ended: true, winners: g.winners }, message: action === "redraw" ? "Winners redrawn." : "Giveaway ended." });
             } catch (error) { console.error("[Dashboard API] Giveaway action failed:", error.message); return sendJson(res, 500, { error: "giveaway_action_failed" }); }
         }
+        if (url.pathname === "/api/spawners/panel" && req.method === "GET") {
+            const spawnerPrices = require("./spawner-prices");
+            const panel = spawnerPrices.loadPanelContent();
+            let registered = false;
+            try { const ref = JSON.parse(fs.readFileSync("./spawner-panel.json", "utf8")); registered = Boolean(ref.channelId && ref.messageId); } catch {}
+            return sendJson(res, 200, { ok: true, panel, registered });
+        }
+        if (url.pathname === "/api/spawners/panel" && req.method === "POST") {
+            let data;
+            try { data = await readJson(req); } catch (e) { return sendJson(res, 400, { error: e.message }); }
+            const title = typeof data.title === "string" ? data.title.trim() : "";
+            const description = typeof data.description === "string" ? data.description.trim() : "";
+            if (!title || title.length > 200 || description.length > 3500) return sendJson(res, 400, { error: "invalid_panel_content", message: "Enter a title (max 200 characters) and description (max 3,500 characters)." });
+            try {
+                const spawnerPrices = require("./spawner-prices");
+                spawnerPrices.savePanelContent({ title, description });
+                await spawnerPrices.updateSpawnerPanel(client);
+                return sendJson(res, 200, { ok: true, panel: { title, description }, message: "Spawner message edited successfully." });
+            } catch (error) {
+                console.error("[Dashboard API] Spawner panel edit failed:", error.message);
+                return sendJson(res, 502, { error: "spawner_panel_edit_failed", message: "Saved the panel text, but could not edit the Discord message. Run /spawnerprices once to register the message, then retry." });
+            }
+        }
         if (url.pathname === "/api/spawners" && req.method === "GET") {
             try {
                 const data = JSON.parse(fs.readFileSync("./spawner-stock.json", "utf8"));

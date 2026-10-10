@@ -8,6 +8,7 @@ const fs = require("fs");
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const STOCK_FILE = "./spawner-stock.json";
 const PANEL_FILE = "./spawner-panel.json";
+const PANEL_CONTENT_FILE = "./spawner-panel-content.json";
 const DEFAULT_STOCK = { iron_golem: 0, skeleton: 0 };
 
 function loadStock() {
@@ -35,12 +36,19 @@ function savePanelRef(channelId, messageId) {
     fs.writeFileSync(PANEL_FILE, JSON.stringify({ channelId, messageId }, null, 2));
 }
 
+function loadPanelContent() {
+    try { const value = JSON.parse(fs.readFileSync(PANEL_CONTENT_FILE, "utf8")); return { title: typeof value.title === "string" ? value.title : "Spawner Buy & Sell", description: typeof value.description === "string" ? value.description : "" }; }
+    catch { return { title: "Spawner Buy & Sell", description: "" }; }
+}
+function savePanelContent(content) { fs.writeFileSync(PANEL_CONTENT_FILE, JSON.stringify(content, null, 2)); }
+
 function buildSpawnerPanel() {
     const stock = loadStock();
+    const custom = loadPanelContent();
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle(emojiText(EMOJIS.spawner) + " Spawner Buy & Sell")
-        .setDescription("Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.\n\n**Available stock**\n" + emojiText(EMOJIS.ironGolem) + " Iron Golem: **" + stock.iron_golem.toLocaleString("en-US") + "**\n" + emojiText(EMOJIS.skeleton) + " Skeleton: **" + stock.skeleton.toLocaleString("en-US") + "**")
+        .setTitle(emojiText(EMOJIS.spawner) + " " + custom.title)
+        .setDescription((custom.description || "Want to buy or sell a spawner? Open a private ticket and choose the spawner type, whether you're buying or selling, and your price.") + "\n\n**Available stock**\n" + emojiText(EMOJIS.ironGolem) + " Iron Golem: **" + stock.iron_golem.toLocaleString("en-US") + "**\n" + emojiText(EMOJIS.skeleton) + " Skeleton: **" + stock.skeleton.toLocaleString("en-US") + "**")
         .setFooter({ text: "AnchorFall • Spawner Market" });
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("spawner_prices_open").setLabel("Buy / Sell Spawners").setEmoji(EMOJIS.spawner).setStyle(ButtonStyle.Success)
@@ -281,4 +289,4 @@ async function handleInteraction(interaction) {
     return false;
 }
 
-module.exports = { commands, handleInteraction, updateSpawnerPanel };
+module.exports = { commands, handleInteraction, updateSpawnerPanel, loadPanelContent, savePanelContent };
