@@ -36,9 +36,7 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
-  for (const name of ["PvP & Combat","Farms & Grinders","Crafters & Storage","Bases & Defences","Redstone & Machines","Other Builds"]) {
-    await p.query("INSERT INTO schematic_categories(name) VALUES($1) ON CONFLICT(name) DO NOTHING", [name]);
-  }
+  // Categories are managed by staff; never recreate deleted defaults during routine schema checks.
 }
 
 async function listCategories() {
