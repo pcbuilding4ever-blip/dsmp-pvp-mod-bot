@@ -232,7 +232,7 @@ function startDashboardApi(client) {
             }
         }
         if (req.method === "GET" && url.pathname === "/api/commands") {
-            return sendJson(res, 200, { ok: true, commands: ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"] });
+            return sendJson(res, 200, { ok: true, commands: ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"] });
         }
         if (req.method === "GET" && url.pathname === "/api/tickets") {
             const parentId = "1553777212170178570";
