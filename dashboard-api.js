@@ -182,8 +182,7 @@ function startDashboardApi(client) {
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     );
                 `);
-                const defaults = ["PvP & Combat","Farms & Grinders","Crafters & Storage","Bases & Defences","Redstone & Machines","Other Builds"];
-                for (const name of defaults) await pool.query("INSERT INTO schematic_categories(name) VALUES($1) ON CONFLICT(name) DO NOTHING", [name]);
+                // Do not recreate default categories on every API request: staff must be able to delete them permanently.
                 if (req.method === "GET" && url.pathname === "/api/schematics/categories") {
                     const result = await pool.query("SELECT c.id,c.name,COUNT(s.id)::int AS schematic_count FROM schematic_categories c LEFT JOIN schematics s ON s.category_id=c.id GROUP BY c.id ORDER BY c.id");
                     return sendJson(res, 200, { ok: true, categories: result.rows });
