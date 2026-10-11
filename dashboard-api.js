@@ -155,6 +155,82 @@ function startDashboardApi(client) {
                 return sendJson(res, 502, { error: "vouch_query_failed" });
             }
         }
+        // Schematic library endpoints are isolated from ticket and giveaway handlers.
+        if (url.pathname.startsWith("/api/schematics")) {
+            if (!process.env.DATABASE_URL) return sendJson(res, 503, { error: "database_not_configured" });
+            let pool;
+            try {
+                const { Pool } = require("pg");
+                pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false }, max: 2 });
+                await pool.query(`
+                    CREATE TABLE IF NOT EXISTS schematic_categories (
+                        id BIGSERIAL PRIMARY KEY,
+                        name VARCHAR(80) NOT NULL UNIQUE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE TABLE IF NOT EXISTS schematics (
+                        id BIGSERIAL PRIMARY KEY,
+                        name VARCHAR(100) NOT NULL,
+                        description VARCHAR(1000) NOT NULL DEFAULT '',
+                        category_id BIGINT REFERENCES schematic_categories(id) ON DELETE RESTRICT,
+                        file_url TEXT,
+                        file_key TEXT,
+                        file_name VARCHAR(180),
+                        status VARCHAR(16) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+                        created_by VARCHAR(30),
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                `);
+                const defaults = ["PvP & Combat","Farms & Grinders","Crafters & Storage","Bases & Defences","Redstone & Machines","Other Builds"];
+                for (const name of defaults) await pool.query("INSERT INTO schematic_categories(name) VALUES($1) ON CONFLICT(name) DO NOTHING", [name]);
+                if (req.method === "GET" && url.pathname === "/api/schematics/categories") {
+                    const result = await pool.query("SELECT c.id,c.name,COUNT(s.id)::int AS schematic_count FROM schematic_categories c LEFT JOIN schematics s ON s.category_id=c.id GROUP BY c.id ORDER BY c.id");
+                    return sendJson(res, 200, { ok: true, categories: result.rows });
+                }
+                if (req.method === "GET" && url.pathname === "/api/schematics") {
+                    const result = await pool.query("SELECT s.id,s.name,s.description,s.category_id,c.name AS category,s.file_name,s.file_url,s.status,s.created_by,s.created_at FROM schematics s LEFT JOIN schematic_categories c ON c.id=s.category_id ORDER BY s.created_at DESC LIMIT 500");
+                    return sendJson(res, 200, { ok: true, schematics: result.rows });
+                }
+                if (req.method === "POST" && url.pathname === "/api/schematics") {
+                    let data;
+                    try { data = await readJson(req, 10000); } catch (e) { return sendJson(res, e.message === "body_too_large" ? 413 : 400, { error: e.message }); }
+                    const name = typeof data.name === "string" ? data.name.trim() : "";
+                    const description = typeof data.description === "string" ? data.description.trim() : "";
+                    const categoryId = Number(data.categoryId);
+                    if (!name || name.length > 100 || description.length > 1000 || !Number.isSafeInteger(categoryId) || categoryId < 1) return sendJson(res, 400, { error: "invalid_schematic", message: "Provide a name, description (up to 1,000 characters), and category." });
+                    const category = await pool.query("SELECT id FROM schematic_categories WHERE id=$1", [categoryId]);
+                    if (!category.rowCount) return sendJson(res, 400, { error: "category_not_found" });
+                    // No draft can be published until a permanent file has been attached.
+                    const result = await pool.query("INSERT INTO schematics(name,description,category_id,status,created_by) VALUES($1,$2,$3,'draft',$4) RETURNING id,name,description,category_id,status,created_at", [name, description, categoryId, typeof data.createdBy === "string" ? data.createdBy.slice(0,30) : null]);
+                    return sendJson(res, 201, { ok: true, schematic: result.rows[0], message: "Draft saved. Attach a permanent .litematic file before publishing." });
+                }
+                if (req.method === "POST" && url.pathname === "/api/schematics/category") {
+                    let data;
+                    try { data = await readJson(req, 2000); } catch (e) { return sendJson(res, 400, { error: e.message }); }
+                    const name = typeof data.name === "string" ? data.name.trim() : "";
+                    if (!name || name.length > 80) return sendJson(res, 400, { error: "invalid_category" });
+                    const result = await pool.query("INSERT INTO schematic_categories(name) VALUES($1) ON CONFLICT(name) DO NOTHING RETURNING id,name");
+                    if (!result.rowCount) return sendJson(res, 409, { error: "category_exists" });
+                    return sendJson(res, 201, { ok: true, category: result.rows[0] });
+                }
+                if (req.method === "POST" && url.pathname === "/api/schematics/delete") {
+                    let data;
+                    try { data = await readJson(req, 2000); } catch (e) { return sendJson(res, 400, { error: e.message }); }
+                    const id = Number(data.id);
+                    if (!Number.isSafeInteger(id) || id < 1) return sendJson(res, 400, { error: "invalid_id" });
+                    const result = await pool.query("DELETE FROM schematics WHERE id=$1 RETURNING id", [id]);
+                    if (!result.rowCount) return sendJson(res, 404, { error: "schematic_not_found" });
+                    return sendJson(res, 200, { ok: true, message: "Schematic removed from the library." });
+                }
+                return sendJson(res, 404, { error: "not_found" });
+            } catch (error) {
+                console.error("[Schematic API] Request failed:", error.message);
+                return sendJson(res, 500, { error: "schematic_api_failed" });
+            } finally {
+                if (pool) await pool.end().catch(() => {});
+            }
+        }
         if (req.method === "GET" && url.pathname === "/api/commands") {
             return sendJson(res, 200, { ok: true, commands: ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"] });
         }
