@@ -410,6 +410,19 @@ new SlashCommandBuilder()
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
+        .setName("schematic")
+        .setDescription("Manage the schematic library")
+        .addSubcommand(subcommand => subcommand
+            .setName("post")
+            .setDescription("Post the interactive schematic library panel")
+            .addChannelOption(option => option
+                .setName("channel")
+                .setDescription("Channel where the library panel should be posted")
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(true)))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
         .setName("game")
         .setDescription("Start a prize competition for the community")
         .addStringOption(option => option.setName("game").setDescription("Which game will people compete in?").setRequired(true).setMaxLength(100))
@@ -520,6 +533,14 @@ client.on("interactionCreate", async interaction => {
         if (await spawnerPrices.handleInteraction(interaction)) return;
         if (await vouchSystem.handleVouchInteraction(interaction)) return;
         if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === "schematic_category") {
+                const category = interaction.values[0];
+                await interaction.reply({
+                    content: `📚 **${category}**\n\nThere are no published schematics in this category yet. Staff can add them as the library is set up.`,
+                    ephemeral: true
+                });
+                return;
+            }
             if (interaction.customId === "settings_menu") {
     const choice = interaction.values[0];
 
@@ -1062,6 +1083,41 @@ client.on("interactionCreate", async interaction => {
             });
 
             await interaction.reply({ content: "✅ Application panel posted.", ephemeral: true });
+            return;
+        }
+
+        if (interaction.commandName === "schematic" && interaction.options.getSubcommand() === "post") {
+            const member = interaction.member;
+            const canManage = member?.permissions?.has(PermissionFlagsBits.ManageChannels)
+                || member?.permissions?.has(PermissionFlagsBits.ManageGuild);
+            if (!canManage) {
+                await interaction.reply({ content: "❌ You need Manage Channels or Manage Server to post the schematic panel.", ephemeral: true });
+                return;
+            }
+
+            const channel = interaction.options.getChannel("channel", true);
+            if (!channel.isTextBased() || channel.type !== ChannelType.GuildText) {
+                await interaction.reply({ content: "❌ Please choose a normal text channel for the schematic panel.", ephemeral: true });
+                return;
+            }
+
+            const categoryMenu = new StringSelectMenuBuilder()
+                .setCustomId("schematic_category")
+                .setPlaceholder("Choose a schematic category")
+                .addOptions(
+                    { label: "PvP & Combat", value: "PvP & Combat", description: "Crystal PvP and combat builds", emoji: "⚔️" },
+                    { label: "Farms & Grinders", value: "Farms & Grinders", description: "Farms, mob grinders and generators", emoji: "🌾" },
+                    { label: "Crafters & Storage", value: "Crafters & Storage", description: "Crafters, sorters and storage", emoji: "📦" },
+                    { label: "Bases & Defences", value: "Bases & Defences", description: "Bases, walls and defensive builds", emoji: "🏰" },
+                    { label: "Redstone & Machines", value: "Redstone & Machines", description: "Redstone contraptions and machines", emoji: "⚙️" },
+                    { label: "Other Builds", value: "Other Builds", description: "Anything that fits another category", emoji: "🧱" }
+                );
+
+            await channel.send({
+                content: "## 🧱 DSMP PvP Schematic Library\\n\\nBrowse community schematics below. Choose a category to explore builds. Published schematics will appear here as the library is populated.\\n\\n**File format:** `.litematic`",
+                components: [new ActionRowBuilder().addComponents(categoryMenu)]
+            });
+            await interaction.reply({ content: `✅ Schematic library panel posted in ${channel}.`, ephemeral: true });
             return;
         }
 
