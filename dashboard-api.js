@@ -210,9 +210,40 @@ function startDashboardApi(client) {
                     try { data = await readJson(req, 2000); } catch (e) { return sendJson(res, 400, { error: e.message }); }
                     const name = typeof data.name === "string" ? data.name.trim() : "";
                     if (!name || name.length > 80) return sendJson(res, 400, { error: "invalid_category" });
-                    const result = await pool.query("INSERT INTO schematic_categories(name) VALUES($1) ON CONFLICT(name) DO NOTHING RETURNING id,name");
+                    const result = await pool.query("INSERT INTO schematic_categories(name) VALUES($1) ON CONFLICT(name) DO NOTHING RETURNING id,name", [name]);
                     if (!result.rowCount) return sendJson(res, 409, { error: "category_exists" });
                     return sendJson(res, 201, { ok: true, category: result.rows[0] });
+                }
+                if (req.method === "POST" && url.pathname === "/api/schematics/publish") {
+                    let data;
+                    try { data = await readJson(req, 2000); } catch (e) { return sendJson(res, 400, { error: e.message }); }
+                    const id = Number(data.id);
+                    if (!Number.isSafeInteger(id) || id < 1) return sendJson(res, 400, { error: "invalid_id" });
+                    const result = await pool.query("UPDATE schematics SET status='published',updated_at=NOW() WHERE id=$1 AND file_key IS NOT NULL RETURNING id,name,status", [id]);
+                    if (!result.rowCount) return sendJson(res, 409, { error: "file_required_or_not_found", message: "A stored .litematic file is required before publishing." });
+                    return sendJson(res, 200, { ok: true, schematic: result.rows[0] });
+                }
+                if (req.method === "POST" && url.pathname === "/api/schematics/category/delete") {
+                    let data;
+                    try { data = await readJson(req, 2000); } catch (e) { return sendJson(res, 400, { error: e.message }); }
+                    const id = Number(data.id);
+                    const replacementId = data.replacementCategoryId == null || data.replacementCategoryId === "" ? null : Number(data.replacementCategoryId);
+                    if (!Number.isSafeInteger(id) || id < 1 || (replacementId !== null && (!Number.isSafeInteger(replacementId) || replacementId < 1 || replacementId === id))) return sendJson(res, 400, { error: "invalid_category_id" });
+                    const count = await pool.query("SELECT COUNT(*)::int AS n FROM schematics WHERE category_id=$1", [id]);
+                    if (!count.rowCount) return sendJson(res, 404, { error: "category_not_found" });
+                    if (count.rows[0].n && !replacementId) return sendJson(res, 409, { error: "category_in_use", message: "Choose a replacement category before deleting this category." });
+                    if (replacementId) {
+                        const replacement = await pool.query("SELECT id FROM schematic_categories WHERE id=$1", [replacementId]);
+                        if (!replacement.rowCount) return sendJson(res, 400, { error: "replacement_category_not_found" });
+                    }
+                    const tx = await pool.connect();
+                    try {
+                        await tx.query("BEGIN");
+                        if (replacementId) await tx.query("UPDATE schematics SET category_id=$1,updated_at=NOW() WHERE category_id=$2", [replacementId, id]);
+                        await tx.query("DELETE FROM schematic_categories WHERE id=$1", [id]);
+                        await tx.query("COMMIT");
+                    } catch (e) { await tx.query("ROLLBACK"); throw e; } finally { tx.release(); }
+                    return sendJson(res, 200, { ok: true, message: "Category deleted." });
                 }
                 if (req.method === "POST" && url.pathname === "/api/schematics/delete") {
                     let data;
