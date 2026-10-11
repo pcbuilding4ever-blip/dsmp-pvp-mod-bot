@@ -85,7 +85,7 @@ async function uploadSchematic(buffer, originalName) {
 }
 
 async function createDownloadUrl(key, fileName) {
-  if (typeof key !== "string" || !/^schematics\\/[a-zA-Z0-9/_-]+\\.litematic$/.test(key)) {
+  if (typeof key !== "string" || !/^schematics\/[a-zA-Z0-9/_-]+\.litematic$/.test(key)) {
     throw new Error("Invalid schematic storage key.");
   }
   const { s3, bucket } = client();
@@ -98,7 +98,7 @@ async function createDownloadUrl(key, fileName) {
 }
 
 async function deleteSchematic(key) {
-  if (typeof key !== "string" || !/^schematics\\/[a-zA-Z0-9/_-]+\\.litematic$/.test(key)) {
+  if (typeof key !== "string" || !/^schematics\/[a-zA-Z0-9/_-]+\.litematic$/.test(key)) {
     throw new Error("Invalid schematic storage key.");
   }
   const { s3, bucket } = client();
