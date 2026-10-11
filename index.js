@@ -20,6 +20,8 @@ const fs = require("fs");
 const vouchSystem = require("./vouch-system");
 const spawnerPrices = require("./spawner-prices");
 const { startDashboardApi } = require("./dashboard-api");
+const schematicLibrary = require("./schematic-library");
+const schematicStorage = require("./schematic-storage");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const RULES_CHANNEL_ID = "1550441311621095495";
@@ -412,14 +414,11 @@ new SlashCommandBuilder()
     new SlashCommandBuilder()
         .setName("schematic")
         .setDescription("Manage the schematic library")
-        .addSubcommand(subcommand => subcommand
-            .setName("post")
-            .setDescription("Post the interactive schematic library panel")
-            .addChannelOption(option => option
-                .setName("channel")
-                .setDescription("Channel where the library panel should be posted")
-                .addChannelTypes(ChannelType.GuildText)
-                .setRequired(true)))
+        .addSubcommand(subcommand => subcommand.setName("post").setDescription("Post the interactive schematic library panel").addChannelOption(option => option.setName("channel").setDescription("Channel for the panel").addChannelTypes(ChannelType.GuildText).setRequired(true)))
+        .addSubcommand(subcommand => subcommand.setName("add").setDescription("Upload a schematic draft").addStringOption(option => option.setName("name").setDescription("Schematic name").setRequired(true).setMaxLength(100)).addStringOption(option => option.setName("description").setDescription("Description").setRequired(true).setMaxLength(1000)).addStringOption(option => option.setName("category").setDescription("Exact category name").setRequired(true).setMaxLength(80)).addAttachmentOption(option => option.setName("file").setDescription("A .litematic file (max 25 MB)").setRequired(true)))
+        .addSubcommand(subcommand => subcommand.setName("publish").setDescription("Publish a draft").addIntegerOption(option => option.setName("id").setDescription("Schematic ID").setRequired(true).setMinValue(1)))
+        .addSubcommand(subcommand => subcommand.setName("remove").setDescription("Remove a schematic").addIntegerOption(option => option.setName("id").setDescription("Schematic ID").setRequired(true).setMinValue(1)))
+        .addSubcommand(subcommand => subcommand.setName("category-add").setDescription("Add a category").addStringOption(option => option.setName("name").setDescription("Category name").setRequired(true).setMaxLength(80)))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
@@ -532,13 +531,26 @@ client.on("interactionCreate", async interaction => {
     try {
         if (await spawnerPrices.handleInteraction(interaction)) return;
         if (await vouchSystem.handleVouchInteraction(interaction)) return;
+        if (interaction.isButton() && interaction.customId.startsWith("schematic_remove_")) {
+            if (interaction.customId === "schematic_remove_cancel") { await interaction.update({content:"Removal cancelled.",components:[]}); return; }
+            const member=interaction.member; const canManage=member?.permissions?.has(PermissionFlagsBits.ManageChannels)||member?.permissions?.has(PermissionFlagsBits.ManageGuild);
+            if(!canManage){await interaction.reply({content:"You do not have permission.",ephemeral:true});return;}
+            const id=Number(interaction.customId.split(":")[1]);
+            try { await schematicLibrary.remove(id); await interaction.update({content:"Schematic and stored file removed.",components:[]}); } catch(e) { console.error("[Schematic] remove failed",e.message); await interaction.update({content:"Removal failed. Check the bot logs and retry.",components:[]}); } return;
+        }
         if (interaction.isStringSelectMenu()) {
             if (interaction.customId === "schematic_category") {
-                const category = interaction.values[0];
-                await interaction.reply({
-                    content: `📚 **${category}**\n\nThere are no published schematics in this category yet. Staff can add them as the library is set up.`,
-                    ephemeral: true
-                });
+                const builds = await schematicLibrary.listPublished(Number(interaction.values[0]));
+                if (!builds.length) { await interaction.reply({ content: "📚 No published schematics in this category yet.", ephemeral: true }); return; }
+                const menu = new StringSelectMenuBuilder().setCustomId("schematic_build").setPlaceholder("Choose a schematic to download").addOptions(builds.slice(0,25).map(s => ({ label:s.name.slice(0,100), value:String(s.id), description:(s.description || "Download schematic").slice(0,100) })));
+                await interaction.reply({ content:"📚 Published schematics — choose one to get a secure download link.", components:[new ActionRowBuilder().addComponents(menu)], ephemeral:true });
+                return;
+            }
+            if (interaction.customId === "schematic_build") {
+                const build = await schematicLibrary.getById(Number(interaction.values[0]));
+                if (!build || build.status !== "published" || !build.file_key) { await interaction.reply({ content:"That schematic is unavailable.", ephemeral:true }); return; }
+                const link = await schematicStorage.createDownloadUrl(build.file_key, build.file_name || (build.name + ".litematic"));
+                await interaction.reply({ content:"Download **"+build.name+"**\n"+(build.description || "")+"\n[Download .litematic]("+link+")\nThis private link expires in 5 minutes.", ephemeral:true });
                 return;
             }
             if (interaction.customId === "settings_menu") {
@@ -1086,39 +1098,32 @@ client.on("interactionCreate", async interaction => {
             return;
         }
 
-        if (interaction.commandName === "schematic" && interaction.options.getSubcommand() === "post") {
+        if (interaction.commandName === "schematic") {
+            const sub = interaction.options.getSubcommand();
             const member = interaction.member;
-            const canManage = member?.permissions?.has(PermissionFlagsBits.ManageChannels)
-                || member?.permissions?.has(PermissionFlagsBits.ManageGuild);
-            if (!canManage) {
-                await interaction.reply({ content: "❌ You need Manage Channels or Manage Server to post the schematic panel.", ephemeral: true });
-                return;
+            const canManage = member?.permissions?.has(PermissionFlagsBits.ManageChannels) || member?.permissions?.has(PermissionFlagsBits.ManageGuild);
+            if (!canManage) { await interaction.reply({ content:"You need Manage Channels or Manage Server.", ephemeral:true }); return; }
+            if (sub === "add") {
+                await interaction.deferReply({ ephemeral:true });
+                const name = interaction.options.getString("name", true).trim();
+                const description = interaction.options.getString("description", true).trim();
+                const categoryName = interaction.options.getString("category", true).trim();
+                const attachment = interaction.options.getAttachment("file", true);
+                if (!attachment.name.toLowerCase().endsWith(".litematic") || attachment.size < 1 || attachment.size > schematicStorage.MAX_SCHEMATIC_BYTES) { await interaction.editReply("Attach a .litematic file no larger than 25 MB."); return; }
+                const categories = await schematicLibrary.listCategories();
+                const category = categories.find(v => v.name.toLowerCase() === categoryName.toLowerCase());
+                if (!category) { await interaction.editReply("Category not found. Existing categories: " + categories.map(v=>v.name).join(", ")); return; }
+                const response = await fetch(attachment.url);
+                if (!response.ok) { await interaction.editReply("Could not retrieve the Discord attachment."); return; }
+                const buffer = Buffer.from(await response.arrayBuffer());
+                if (buffer.length !== attachment.size || buffer.length > schematicStorage.MAX_SCHEMATIC_BYTES) { await interaction.editReply("Attachment size check failed."); return; }
+                const draft = await schematicLibrary.addDraft({ name, description, categoryId:category.id, createdBy:interaction.user.id, buffer, fileName:attachment.name });
+                await interaction.editReply("Uploaded as draft **"+draft.name+"** (ID "+draft.id+"). Use /schematic publish with that ID when ready."); return;
             }
-
-            const channel = interaction.options.getChannel("channel", true);
-            if (!channel.isTextBased() || channel.type !== ChannelType.GuildText) {
-                await interaction.reply({ content: "❌ Please choose a normal text channel for the schematic panel.", ephemeral: true });
-                return;
-            }
-
-            const categoryMenu = new StringSelectMenuBuilder()
-                .setCustomId("schematic_category")
-                .setPlaceholder("Choose a schematic category")
-                .addOptions(
-                    { label: "PvP & Combat", value: "PvP & Combat", description: "Crystal PvP and combat builds", emoji: "⚔️" },
-                    { label: "Farms & Grinders", value: "Farms & Grinders", description: "Farms, mob grinders and generators", emoji: "🌾" },
-                    { label: "Crafters & Storage", value: "Crafters & Storage", description: "Crafters, sorters and storage", emoji: "📦" },
-                    { label: "Bases & Defences", value: "Bases & Defences", description: "Bases, walls and defensive builds", emoji: "🏰" },
-                    { label: "Redstone & Machines", value: "Redstone & Machines", description: "Redstone contraptions and machines", emoji: "⚙️" },
-                    { label: "Other Builds", value: "Other Builds", description: "Anything that fits another category", emoji: "🧱" }
-                );
-
-            await channel.send({
-                content: "## 🧱 DSMP PvP Schematic Library\\n\\nBrowse community schematics below. Choose a category to explore builds. Published schematics will appear here as the library is populated.\\n\\n**File format:** `.litematic`",
-                components: [new ActionRowBuilder().addComponents(categoryMenu)]
-            });
-            await interaction.reply({ content: `✅ Schematic library panel posted in ${channel}.`, ephemeral: true });
-            return;
+            if (sub === "publish") { const item = await schematicLibrary.publish(interaction.options.getInteger("id", true)); if (!item) { await interaction.reply({content:"Draft not found or it has no uploaded file.",ephemeral:true}); return; } await interaction.reply({content:"Published **"+item.name+"** (ID "+item.id+").",ephemeral:true}); return; }
+            if (sub === "remove") { const id=interaction.options.getInteger("id",true); const item=await schematicLibrary.getById(id); if(!item){await interaction.reply({content:"Schematic not found.",ephemeral:true});return;} const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("schematic_remove_confirm:"+id).setLabel("Confirm removal").setStyle(ButtonStyle.Danger),new ButtonBuilder().setCustomId("schematic_remove_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary)); await interaction.reply({content:"Remove **"+item.name+"** and its stored file? This cannot be undone.",components:[row],ephemeral:true}); return; }
+            if (sub === "category-add") { try { const item=await schematicLibrary.addCategory(interaction.options.getString("name",true).trim()); await interaction.reply({content:"Added category **"+item.name+"**.",ephemeral:true}); } catch(e) { await interaction.reply({content:e.message,ephemeral:true}); } return; }
+            if (sub === "post") { const channel=interaction.options.getChannel("channel",true); const cats=await schematicLibrary.listCategories(); const menu=new StringSelectMenuBuilder().setCustomId("schematic_category").setPlaceholder("Choose a schematic category").addOptions(cats.slice(0,25).map(cat=>({label:cat.name.slice(0,100),value:String(cat.id),description:(cat.schematic_count+" published schematics").slice(0,100)}))); await channel.send({content:"## DSMP PvP Schematic Library\nChoose a category to browse published .litematic files.",components:[new ActionRowBuilder().addComponents(menu)]}); await interaction.reply({content:"Schematic library panel posted.",ephemeral:true}); return; }
         }
 
         if (interaction.commandName === "ticketpanel") {
