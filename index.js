@@ -415,11 +415,11 @@ new SlashCommandBuilder()
         .setName("schematic")
         .setDescription("Manage the schematic library")
         .addSubcommand(subcommand => subcommand.setName("post").setDescription("Post the interactive schematic library panel").addChannelOption(option => option.setName("channel").setDescription("Channel for the panel").addChannelTypes(ChannelType.GuildText).setRequired(true)))
-        .addSubcommand(subcommand => subcommand.setName("add").setDescription("Upload a schematic draft").addStringOption(option => option.setName("name").setDescription("Schematic name").setRequired(true).setMaxLength(100)).addStringOption(option => option.setName("description").setDescription("Description").setRequired(true).setMaxLength(1000)).addStringOption(option => option.setName("category").setDescription("Exact category name").setRequired(true).setMaxLength(80)).addAttachmentOption(option => option.setName("file").setDescription("A .litematic file (max 25 MB)").setRequired(true)))
+        .addSubcommand(subcommand => subcommand.setName("add").setDescription("Upload a schematic draft").addStringOption(option => option.setName("name").setDescription("Schematic name").setRequired(true).setMaxLength(100)).addStringOption(option => option.setName("description").setDescription("Description").setRequired(true).setMaxLength(1000)).addStringOption(option => option.setName("category").setDescription("Choose an existing category").setRequired(true).setMaxLength(80).setAutocomplete(true)).addAttachmentOption(option => option.setName("file").setDescription("A .litematic file (max 25 MB)").setRequired(true)))
         .addSubcommand(subcommand => subcommand.setName("publish").setDescription("Publish a draft").addIntegerOption(option => option.setName("id").setDescription("Schematic ID").setRequired(true).setMinValue(1)))
         .addSubcommand(subcommand => subcommand.setName("remove").setDescription("Remove a schematic").addIntegerOption(option => option.setName("id").setDescription("Schematic ID").setRequired(true).setMinValue(1)))
         .addSubcommand(subcommand => subcommand.setName("category-add").setDescription("Add a category").addStringOption(option => option.setName("name").setDescription("Category name").setRequired(true).setMaxLength(80)))
-        .addSubcommand(subcommand => subcommand.setName("category-remove").setDescription("Remove an empty category").addStringOption(option => option.setName("name").setDescription("Exact category name").setRequired(true).setMaxLength(80)))
+        .addSubcommand(subcommand => subcommand.setName("category-remove").setDescription("Remove an empty category").addStringOption(option => option.setName("name").setDescription("Choose an existing category").setRequired(true).setMaxLength(80).setAutocomplete(true)))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
@@ -529,6 +529,29 @@ async function createTicket(interaction, ticketType) {
 }
 
 client.on("interactionCreate", async interaction => {
+    if (interaction.isAutocomplete()) {
+        try {
+            if (interaction.commandName === "schematic") {
+                const sub = interaction.options.getSubcommand();
+                const focused = interaction.options.getFocused(true);
+                if ((sub === "add" && focused.name === "category") || (sub === "category-remove" && focused.name === "name")) {
+                    const categories = await schematicLibrary.listCategories();
+                    const query = String(focused.value || "").toLowerCase();
+                    const matches = categories
+                        .filter(category => category.name.toLowerCase().includes(query))
+                        .slice(0, 25)
+                        .map(category => ({ name: category.name.slice(0, 100), value: category.name.slice(0, 80) }));
+                    await interaction.respond(matches);
+                    return;
+                }
+            }
+            await interaction.respond([]);
+        } catch (error) {
+            console.error("Schematic category autocomplete failed:", error);
+            try { await interaction.respond([]); } catch (_) {}
+        }
+        return;
+    }
     try {
         if (await spawnerPrices.handleInteraction(interaction)) return;
         if (await vouchSystem.handleVouchInteraction(interaction)) return;
