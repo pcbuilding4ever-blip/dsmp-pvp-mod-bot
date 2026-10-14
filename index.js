@@ -541,23 +541,6 @@ async function createTicket(interaction, ticketType) {
 client.on("interactionCreate", async interaction => {
     if (interaction.isAutocomplete()) {
         try {
-            if (interaction.commandName === "schematic-request-panel") {
-            const channel = await interaction.guild.channels.fetch(SCHEMATIC_REQUEST_PANEL_CHANNEL_ID);
-            if (!channel || !channel.isTextBased()) {
-                await interaction.reply({ content: "❌ The configured member request channel is unavailable.", ephemeral: true });
-                return;
-            }
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId("schematic_request_open").setLabel("Request a Schematic").setEmoji("📐").setStyle(ButtonStyle.Primary)
-            );
-            await channel.send({
-                content: "# 📐 Request a Schematic\nWant a build added to the library? Click below and send the details to staff for review.",
-                components: [row]
-            });
-            await interaction.reply({ content: `✅ Schematic request panel posted in <#${channel.id}>.`, ephemeral: true });
-            return;
-        }
-
         if (interaction.commandName === "schematic") {
                 const sub = interaction.options.getSubcommand();
                 const focused = interaction.options.getFocused(true);
