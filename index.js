@@ -431,6 +431,18 @@ new SlashCommandBuilder()
         .addStringOption(option => option.setName("prize").setDescription("What is the prize?").setRequired(true).setMaxLength(200)),
 
 new SlashCommandBuilder()
+        .setName("skillgame")
+        .setDescription("Staff: start a skill-based prize challenge")
+        .addStringOption(option => option.setName("game").setDescription("Choose the game").setRequired(true).addChoices(
+            { name: "Guess the Flag (100 points)", value: "flag" },
+            { name: "Guess the Number (5 points)", value: "number" },
+            { name: "Minecraft Trivia (10 points)", value: "trivia" },
+            { name: "Crystal PvP Quiz (10 points)", value: "crystal" }
+        ))
+        .addStringOption(option => option.setName("prize").setDescription("Prize for the winner").setRequired(true).setMaxLength(200))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+new SlashCommandBuilder()
         .setName("giveaway")
         .setDescription("Start a giveaway")
         .addUserOption(option => option.setName("host").setDescription("Who is hosting the giveaway?").setRequired(true))
@@ -815,6 +827,117 @@ client.on("interactionCreate", async interaction => {
                 await interaction.showModal(modal);
                 return;
             }
+            if (interaction.customId.startsWith("skillplay:")) {
+                const id = interaction.customId.slice("skillplay:".length);
+                const events = loadGames(); const event = events[id];
+                if (!event || event.ended) { await interaction.reply({ content: "This challenge has ended.", ephemeral: true }); return; }
+                const questions = {
+                    flag: [
+                        ["🇯🇵",["Japan","China","South Korea","Thailand"],0],["🇨🇦",["United States","Canada","Denmark","Austria"],1],
+                        ["🇧🇷",["Portugal","Brazil","Argentina","Mexico"],1],["🇫🇷",["France","Netherlands","Russia","Italy"],0],
+                        ["🇦🇺",["New Zealand","Australia","Fiji","United Kingdom"],1],["🇩🇪",["Belgium","Germany","Spain","Poland"],1],
+                        ["🇮🇳",["India","Ireland","Niger","Pakistan"],0],["🇸🇪",["Finland","Norway","Sweden","Iceland"],2],
+                        ["🇲🇽",["Mexico","Italy","Hungary","Bulgaria"],0],["🇿🇦",["Kenya","South Africa","Nigeria","Ghana"],1]
+                    ],
+                    number: [
+                        ["What comes next: 2, 4, 6, 8, ?",["9","10","12","14"],1],["What is 7 × 6?",["36","40","42","48"],2],
+                        ["What comes next: 1, 1, 2, 3, 5, ?",["6","7","8","9"],2],["What is 81 ÷ 9?",["7","8","9","10"],2],
+                        ["What is 15 + 17?",["30","31","32","33"],2]
+                    ],
+                    trivia: [
+                        ["Which material is used to craft a standard torch?",["Coal or charcoal","Iron","Redstone","Flint"],0],
+                        ["Which dimension contains Endermen naturally?",["Overworld only","Nether only","The End","None"],2],
+                        ["What tool is best for mining stone?",["Hoe","Pickaxe","Shovel","Sword"],1],
+                        ["Which mob explodes near players?",["Skeleton","Creeper","Spider","Slime"],1],
+                        ["What do you need to enter the End portal in survival?",["Eyes of Ender","Blaze rods only","Diamonds","Ghast tears"],0],
+                        ["Which ore drops experience when mined without Silk Touch?",["Iron ore","Coal ore","Ancient debris","None"],1],
+                        ["What does a shield help block?",["Many incoming attacks","Fall damage","Hunger","All status effects"],0],
+                        ["Which mob trades with gold in the Nether?",["Villager","Piglin","Witch","Allay"],1],
+                        ["What grows into a tree?",["Sapling","Stick","Vine","Bamboo only"],0],
+                        ["Which item repairs elytra in an anvil?",["Leather","Phantom membranes","Feathers","String"],1]
+                    ],
+                    crystal: [
+                        ["What block is required to place an End Crystal?",["Obsidian or bedrock","Stone","Dirt","Glass"],0],
+                        ["What item is commonly used to respawn the Ender Dragon?",["End crystal","Totem","Beacon","Ender pearl"],0],
+                        ["What can protect you from one lethal hit?",["Totem of Undying","Compass","Spyglass","Lead"],0],
+                        ["What effect does a golden apple provide?",["Regeneration/absorption effects","Mining fatigue","Levitation","Bad omen"],0],
+                        ["Which item helps you move quickly between positions?",["Ender pearl","Bucket","Shield","Anvil"],0],
+                        ["What armor material generally offers strong protection?",["Leather","Netherite","Gold","Chainmail"],1],
+                        ["What is the main risk of placing crystals too close?",["Self-damage","Losing hunger instantly","Weather changes","Villagers despawn"],0],
+                        ["What can reduce explosion damage?",["Blast Protection","Feather Falling only","Aqua Affinity","Thorns only"],0],
+                        ["Which item can save you from a fatal hit if charged?",["Totem of Undying","Clock","Map","Fishing rod"],0],
+                        ["Why do players use obsidian in crystal PvP?",["It supports crystal placement","It heals players","It disables armor","It prevents all damage"],0]
+                    ]
+                };
+                const qs = questions[event.type];
+                if (!qs) { await interaction.reply({ content: "Unknown quiz type.", ephemeral: true }); return; }
+                event.players = [...new Set([...(event.players || []), interaction.user.id])];
+                event.sessions = event.sessions || {};
+                if (event.sessions[interaction.user.id]?.complete) { await interaction.reply({ content: "You've already completed this challenge. Your score is **" + event.sessions[interaction.user.id].score + "**.", ephemeral: true }); return; }
+                event.sessions[interaction.user.id] = { index: 0, score: 0, complete: false };
+                saveGames(events);
+                const q = qs[0];
+                const row = new ActionRowBuilder().addComponents(q[1].map((answer,i) => new ButtonBuilder().setCustomId("skillanswer:" + id + ":" + i).setLabel(answer).setStyle(ButtonStyle.Secondary)));
+                await interaction.reply({ content: "**Question 1/" + qs.length + "**\n" + q[0] + (event.type === "flag" ? "\nChoose the country for this flag:" : ""), components: [row], ephemeral: true });
+                return;
+            }
+            if (interaction.customId.startsWith("skillanswer:")) {
+                const parts = interaction.customId.split(":"); const id = parts[1]; const choice = Number(parts[2]);
+                const events = loadGames(); const event = events[id];
+                const questions = {
+                    flag: [["🇯🇵",["Japan","China","South Korea","Thailand"],0],["🇨🇦",["United States","Canada","Denmark","Austria"],1],["🇧🇷",["Portugal","Brazil","Argentina","Mexico"],1],["🇫🇷",["France","Netherlands","Russia","Italy"],0],["🇦🇺",["New Zealand","Australia","Fiji","United Kingdom"],1],["🇩🇪",["Belgium","Germany","Spain","Poland"],1],["🇮🇳",["India","Ireland","Niger","Pakistan"],0],["🇸🇪",["Finland","Norway","Sweden","Iceland"],2],["🇲🇽",["Mexico","Italy","Hungary","Bulgaria"],0],["🇿🇦",["Kenya","South Africa","Nigeria","Ghana"],1]],
+                    number: [["What comes next: 2, 4, 6, 8, ?",["9","10","12","14"],1],["What is 7 × 6?",["36","40","42","48"],2],["What comes next: 1, 1, 2, 3, 5, ?",["6","7","8","9"],2],["What is 81 ÷ 9?",["7","8","9","10"],2],["What is 15 + 17?",["30","31","32","33"],2]],
+                    trivia: [["Which material is used to craft a standard torch?",["Coal or charcoal","Iron","Redstone","Flint"],0],["Which dimension contains Endermen naturally?",["Overworld only","Nether only","The End","None"],2],["What tool is best for mining stone?",["Hoe","Pickaxe","Shovel","Sword"],1],["Which mob explodes near players?",["Skeleton","Creeper","Spider","Slime"],1],["What do you need to enter the End portal in survival?",["Eyes of Ender","Blaze rods only","Diamonds","Ghast tears"],0],["Which ore drops experience when mined without Silk Touch?",["Iron ore","Coal ore","Ancient debris","None"],1],["What does a shield help block?",["Many incoming attacks","Fall damage","Hunger","All status effects"],0],["Which mob trades with gold in the Nether?",["Villager","Piglin","Witch","Allay"],1],["What grows into a tree?",["Sapling","Stick","Vine","Bamboo only"],0],["Which item repairs elytra in an anvil?",["Leather","Phantom membranes","Feathers","String"],1]],
+                    crystal: [["What block is required to place an End Crystal?",["Obsidian or bedrock","Stone","Dirt","Glass"],0],["What item is commonly used to respawn the Ender Dragon?",["End crystal","Totem","Beacon","Ender pearl"],0],["What can protect you from one lethal hit?",["Totem of Undying","Compass","Spyglass","Lead"],0],["What effect does a golden apple provide?",["Regeneration/absorption effects","Mining fatigue","Levitation","Bad omen"],0],["Which item helps you move quickly between positions?",["Ender pearl","Bucket","Shield","Anvil"],0],["What armor material generally offers strong protection?",["Leather","Netherite","Gold","Chainmail"],1],["What is the main risk of placing crystals too close?",["Self-damage","Losing hunger instantly","Weather changes","Villagers despawn"],0],["What can reduce explosion damage?",["Blast Protection","Feather Falling only","Aqua Affinity","Thorns only"],0],["Which item can save you from a fatal hit if charged?",["Totem of Undying","Clock","Map","Fishing rod"],0],["Why do players use obsidian in crystal PvP?",["It supports crystal placement","It heals players","It disables armor","It prevents all damage"],0]]
+                };
+                if (!event || event.ended) { await interaction.reply({ content: "This challenge has ended.", ephemeral: true }); return; }
+                const qs = questions[event.type]; const session = event.sessions?.[interaction.user.id];
+                if (!session || session.complete) { await interaction.reply({ content: "Press Play Challenge to start your own attempt.", ephemeral: true }); return; }
+                const q = qs[session.index];
+                if (!q) { await interaction.reply({ content: "Your attempt is already complete.", ephemeral: true }); return; }
+                if (choice === q[2]) session.score += event.type === "flag" ? 10 : 1;
+                session.index++;
+                if (session.index >= qs.length) {
+                    session.complete = true; event.scores[interaction.user.id] = session.score; saveGames(events);
+                    await interaction.update({ content: "✅ **Quiz complete!** Your score: **" + session.score + "/" + (event.type === "flag" ? 100 : event.type === "number" ? 5 : 10) + "**. Staff can end the event when everyone has played.", components: [] });
+                    return;
+                }
+                saveGames(events);
+                const next = qs[session.index];
+                const row = new ActionRowBuilder().addComponents(next[1].map((answer,i) => new ButtonBuilder().setCustomId("skillanswer:" + id + ":" + i).setLabel(answer).setStyle(ButtonStyle.Secondary)));
+                await interaction.update({ content: "**Question " + (session.index + 1) + "/" + qs.length + "**\n" + next[0] + (event.type === "flag" ? "\nChoose the country for this flag:" : ""), components: [row] });
+                return;
+            }
+            if (interaction.customId.startsWith("skillfinish:")) {
+                const id = interaction.customId.slice("skillfinish:".length);
+                const events = loadGames(); const event = events[id];
+                const isStaff = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)
+                    || interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)
+                    || interaction.member?.roles?.cache?.some(role => role.name.toLowerCase() === "giveaway mod");
+                if (!isStaff) { await interaction.reply({ content: "Only staff can end this event.", ephemeral: true }); return; }
+                if (!event || event.ended) { await interaction.reply({ content: "This event is already ended.", ephemeral: true }); return; }
+                const scores = Object.entries(event.scores || {}).sort((a,b) => b[1] - a[1]);
+                if (!scores.length) { await interaction.reply({ content: "Nobody has completed a quiz yet.", ephemeral: true }); return; }
+                const best = scores[0][1]; const winners = scores.filter(([,score]) => score === best);
+                if (winners.length > 1) { await interaction.reply({ content: "It's tied at " + best + " points. Please run a skill-based tiebreaker; random draws aren't allowed.", ephemeral: true }); return; }
+                event.ended = true; event.winnerId = winners[0][0]; saveGames(events);
+                const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("skillclaim:" + id).setLabel("Claim Prize").setEmoji("🎟️").setStyle(ButtonStyle.Success));
+                await interaction.message.edit({ components: [] }).catch(() => {});
+                await interaction.channel.send({ embeds: [new EmbedBuilder().setColor(0x22c55e).setTitle("🏆 Skill Challenge Results").setDescription("**Winner:** <@" + event.winnerId + ">\n**Score:** " + best + "\n**Prize:** " + event.prize + "\n\nThe winner can claim through a private ticket.")], components: [row] });
+                await interaction.reply({ content: "Winner announced.", ephemeral: true }); return;
+            }
+            if (interaction.customId.startsWith("skillclaim:")) {
+                const id = interaction.customId.slice("skillclaim:".length);
+                const events = loadGames(); const event = events[id];
+                if (!event || !event.ended || event.winnerId !== interaction.user.id) { await interaction.reply({ content: "Only the winner can claim this prize.", ephemeral: true }); return; }
+                const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID).catch(() => null);
+                if (!parent || parent.type !== ChannelType.GuildText) { await interaction.reply({ content: "Prize ticket channel is not configured. Contact staff.", ephemeral: true }); return; }
+                const thread = await parent.threads.create({ name: ("skill-prize-" + interaction.user.username).slice(0,100), type: ChannelType.PrivateThread, invitable: false, reason: "Skill challenge prize claim" });
+                await thread.members.add(interaction.user.id);
+                await thread.send({ content: "🎟️ **Skill Game Prize Claim**\nWinner: <@" + interaction.user.id + ">\nGame: " + event.type + "\nPrize: " + event.prize + "\nScore: " + event.scores[interaction.user.id] + "\nHosted by: <@" + event.hostId + ">\nStaff: verify the score before awarding the prize.", components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+                await interaction.reply({ content: "Prize claim ticket opened: <#" + thread.id + ">", ephemeral: true }); return;
+            }
+
             if (interaction.customId.startsWith("game_join:")) {
                 const gameId = interaction.customId.split(":")[1];
                 const games = loadGames();
@@ -1337,6 +1460,36 @@ client.on("interactionCreate", async interaction => {
                 components: [new ActionRowBuilder().addComponents(menu)]
             });
             await interaction.reply({ content: "Schematic library panel posted.", ephemeral: true });
+            return;
+        }
+
+        if (interaction.commandName === "skillgame") {
+            const member = interaction.member;
+            const isStaff = member?.permissions?.has(PermissionFlagsBits.ManageGuild)
+                || member?.permissions?.has(PermissionFlagsBits.ModerateMembers)
+                || member?.roles?.cache?.some(role => role.name.toLowerCase() === "giveaway mod");
+            if (!isStaff) {
+                await interaction.reply({ content: "❌ Only staff can start skill-game prize events.", ephemeral: true });
+                return;
+            }
+            const type = interaction.options.getString("game", true);
+            const prize = interaction.options.getString("prize", true).trim();
+            const id = "skill-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
+            const titles = { flag: "🇺🇳 Guess the Flag", number: "🔢 Guess the Number", trivia: "🧠 Minecraft Trivia", crystal: "⚔️ Crystal PvP Quiz" };
+            const events = loadGames();
+            events[id] = { id, type, prize, hostId: interaction.user.id, channelId: interaction.channelId, messageId: null, players: [], scores: {}, sessions: {}, ended: false, createdAt: Date.now() };
+            const instructions = { flag: "10 flag questions • 10 points each • 100 points maximum", number: "5 logic-based number puzzles • 1 point each • 5 points maximum", trivia: "10 Minecraft knowledge questions • 1 point each", crystal: "10 Crystal PvP knowledge questions • 1 point each" };
+            const embed = new EmbedBuilder().setColor(0x7c3aed).setTitle("🏆 SKILL GAME CHALLENGE")
+                .setDescription("**Game:** " + titles[type] + "\n**Prize:** " + prize + "\n**Hosted by:** <@" + interaction.user.id + ">\n\n" + instructions[type] + "\n\nPress **Play** to take the quiz. Your answers are scored automatically. Highest score wins; ties require a skill-based tiebreaker, never a random draw.")
+                .setFooter({ text: "DSMP PvP • Skill decides the winner" });
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId("skillplay:" + id).setLabel("Play Challenge").setEmoji("🎮").setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId("skillfinish:" + id).setLabel("End & Pick Winner").setEmoji("🏆").setStyle(ButtonStyle.Success)
+            );
+            const message = await interaction.channel.send({ embeds: [embed], components: [row] });
+            events[id].messageId = message.id;
+            saveGames(events);
+            await interaction.reply({ content: "✅ Challenge posted: **" + titles[type] + "** • Prize: **" + prize + "**", ephemeral: true });
             return;
         }
 
