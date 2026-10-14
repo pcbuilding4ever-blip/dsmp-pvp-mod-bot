@@ -885,7 +885,7 @@ client.on("interactionCreate", async interaction => {
                 }
 
                 await requestChannel.send({
-                    content: "📐 **New Schematic Request**\\nSubmitted by: <@"
+                    content: "📐 **New Schematic Request**\nSubmitted by: <@"
                         + interaction.user.id + ">",
                     embeds: [{
                         color: 0x5865F2,
