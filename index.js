@@ -418,7 +418,7 @@ new SlashCommandBuilder()
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
-        .setName("schematic-panel")
+        .setName("schematic-request-panel")
         .setDescription("Post the schematic browsing panel")
         .addChannelOption(option => option.setName("channel").setDescription("Channel where members can browse schematics").addChannelTypes(ChannelType.GuildText).setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
@@ -1102,7 +1102,7 @@ client.on("interactionCreate", async interaction => {
             return;
         }
 
-        if (interaction.commandName === "schematic-panel") {
+        if (interaction.commandName === "schematic-request-panel") {
             await interaction.deferReply({ ephemeral: true });
             const channel = interaction.options.getChannel("channel", true);
             const cats = await schematicLibrary.listCategories();
