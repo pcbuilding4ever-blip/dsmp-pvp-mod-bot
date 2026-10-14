@@ -731,6 +731,13 @@ client.on("interactionCreate", async interaction => {
                 await thread.send({
                     content: "<@&1559818368742334524> <@" + requesterId + "> A schematic request ticket has been opened by <@" + interaction.user.id + ">.",
                     embeds: originalEmbed ? [originalEmbed] : [],
+                    components: [new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId("close_ticket")
+                            .setLabel("Close Ticket")
+                            .setEmoji("🔒")
+                            .setStyle(ButtonStyle.Danger)
+                    )],
                     allowedMentions: { users: allowedUserMentions, roles: ["1559818368742334524"], parse: [] }
                 }).catch(error => {
                     console.error("Schematic ticket first message failed:", error);
