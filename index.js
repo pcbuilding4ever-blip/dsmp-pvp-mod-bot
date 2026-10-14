@@ -22,6 +22,11 @@ const spawnerPrices = require("./spawner-prices");
 const { startDashboardApi } = require("./dashboard-api");
 const schematicLibrary = require("./schematic-library");
 const schematicStorage = require("./schematic-storage");
+const schematicRequests = require("./schematic-requests");
+const SCHEMATIC_REQUEST_PANEL_CHANNEL_ID = "1559819642153734225";
+const SCHEMATIC_REQUEST_REVIEW_CHANNEL_ID = "1559819140514971668";
+const SCHEMATIC_REQUEST_STAFF_ROLE_ID = "1559818368742334524";
+const SCHEMATIC_REQUEST_FALLBACK_CHANNEL_ID = "1550441643939864637";
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const RULES_CHANNEL_ID = "1550441311621095495";
@@ -423,6 +428,11 @@ new SlashCommandBuilder()
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
+        .setName("schematic-request-panel")
+        .setDescription("Post the member schematic request panel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
         .setName("game")
         .setDescription("Start a prize competition for the community")
         .addStringOption(option => option.setName("game").setDescription("Which game will people compete in?").setRequired(true).setMaxLength(100))
@@ -531,7 +541,24 @@ async function createTicket(interaction, ticketType) {
 client.on("interactionCreate", async interaction => {
     if (interaction.isAutocomplete()) {
         try {
-            if (interaction.commandName === "schematic") {
+            if (interaction.commandName === "schematic-request-panel") {
+            const channel = await interaction.guild.channels.fetch(SCHEMATIC_REQUEST_PANEL_CHANNEL_ID);
+            if (!channel || !channel.isTextBased()) {
+                await interaction.reply({ content: "❌ The configured member request channel is unavailable.", ephemeral: true });
+                return;
+            }
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId("schematic_request_open").setLabel("Request a Schematic").setEmoji("📐").setStyle(ButtonStyle.Primary)
+            );
+            await channel.send({
+                content: "# 📐 Request a Schematic\nWant a build added to the library? Click below and send the details to staff for review.",
+                components: [row]
+            });
+            await interaction.reply({ content: `✅ Schematic request panel posted in <#${channel.id}>.`, ephemeral: true });
+            return;
+        }
+
+        if (interaction.commandName === "schematic") {
                 const sub = interaction.options.getSubcommand();
                 const focused = interaction.options.getFocused(true);
                 if ((sub === "add" && focused.name === "category") || (sub === "category-remove" && focused.name === "name")) {
@@ -721,6 +748,66 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId === "schematic_request_open") {
+                const modal = new ModalBuilder().setCustomId("schematic_request_submit").setTitle("Request a Schematic");
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("request_name").setLabel("Schematic name").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("request_category").setLabel("Category").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("request_description").setLabel("What should it look like?").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("request_reference").setLabel("Reference link (optional)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(300))
+                );
+                await interaction.showModal(modal);
+                return;
+            }
+            if (interaction.customId.startsWith("schematic_request_approve:") || interaction.customId.startsWith("schematic_request_deny:")) {
+                const canReview = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
+                    interaction.member?.roles?.cache?.has(SCHEMATIC_REQUEST_STAFF_ROLE_ID) ||
+                    interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+                if (!canReview) {
+                    await interaction.reply({ content: "You do not have permission to review schematic requests.", ephemeral: true });
+                    return;
+                }
+                const approve = interaction.customId.startsWith("schematic_request_approve:");
+                const requestId = interaction.customId.split(":")[1];
+                const request = await schematicRequests.get(requestId);
+                if (!request || request.status !== "pending") {
+                    await interaction.reply({ content: "This request has already been reviewed or no longer exists.", ephemeral: true });
+                    return;
+                }
+                const updated = await schematicRequests.setStatus(requestId, approve ? "approved" : "denied", interaction.user.id);
+                if (!updated) {
+                    await interaction.reply({ content: "This request has already been reviewed.", ephemeral: true });
+                    return;
+                }
+                const reviewRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId("schematic_request_reviewed").setLabel(approve ? "Approved" : "Denied").setStyle(approve ? ButtonStyle.Success : ButtonStyle.Danger).setDisabled(true)
+                );
+                await interaction.update({ content: interaction.message.content + `\n\n**${approve ? "Approved" : "Denied"} by:** <@${interaction.user.id}>`, components: [reviewRow] });
+                if (!approve) {
+                    const rejection = "Sorry, we didn't do your schematic. You can request it again if you would like!";
+                    try { await (await client.users.fetch(request.user_id)).send(rejection); }
+                    catch {
+                        const fallback = await interaction.guild.channels.fetch(SCHEMATIC_REQUEST_FALLBACK_CHANNEL_ID).catch(() => null);
+                        if (fallback?.isTextBased()) await fallback.send({ content: `Could not DM <@${request.user_id}> about denied schematic request #${requestId}. ${rejection}`, allowedMentions: { users: [request.user_id] } });
+                    }
+                    return;
+                }
+                const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
+                if (!parent || parent.type !== ChannelType.GuildText) throw new Error("Ticket channel is missing or not a text channel.");
+                const thread = await parent.threads.create({
+                    name: `schematic-request-${String(request.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0,35)}`,
+                    type: ChannelType.PrivateThread,
+                    invitable: false,
+                    reason: `Approved schematic request #${requestId}`
+                });
+                await thread.members.add(request.user_id);
+                await thread.send({
+                    content: `<@&${SCHEMATIC_REQUEST_STAFF_ROLE_ID}> 📐 **Approved Schematic Request #${requestId}**\n\n**Requester:** <@${request.user_id}>\n**Name:** ${request.name}\n**Category:** ${request.category}\n**Description:** ${request.description}\n**Reference:** ${request.reference_url || "Not provided"}\n\nStaff can coordinate the build here.`,
+                    allowedMentions: { parse: [], users: [request.user_id], roles: [SCHEMATIC_REQUEST_STAFF_ROLE_ID] }
+                });
+                return;
+            }
+
             if (interaction.customId.startsWith("game_join:")) {
                 const gameId = interaction.customId.split(":")[1];
                 const games = loadGames();
@@ -830,6 +917,33 @@ client.on("interactionCreate", async interaction => {
             await ticketThread.setLocked(true);
             await ticketThread.setArchived(true);
             await interaction.editReply("🔒 Ticket closed and transcript saved to the logs channel.");
+            return;
+        }
+
+        if (interaction.isModalSubmit() && interaction.customId === "schematic_request_submit") {
+            await interaction.deferReply({ ephemeral: true });
+            const data = {
+                guild_id: interaction.guildId,
+                user_id: interaction.user.id,
+                user_tag: interaction.user.tag,
+                name: interaction.fields.getTextInputValue("request_name").trim(),
+                category: interaction.fields.getTextInputValue("request_category").trim(),
+                description: interaction.fields.getTextInputValue("request_description").trim(),
+                reference_url: interaction.fields.getTextInputValue("request_reference").trim() || null
+            };
+            const request = await schematicRequests.create(data);
+            const reviewChannel = await interaction.guild.channels.fetch(SCHEMATIC_REQUEST_REVIEW_CHANNEL_ID);
+            if (!reviewChannel || !reviewChannel.isTextBased()) throw new Error("Schematic review channel is unavailable.");
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`schematic_request_approve:${request.id}`).setLabel("Approve").setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`schematic_request_deny:${request.id}`).setLabel("Deny").setStyle(ButtonStyle.Danger)
+            );
+            await reviewChannel.send({
+                content: `📐 **Schematic Request #${request.id}**\n\n**Requester:** <@${interaction.user.id}> (${interaction.user.tag})\n**Name:** ${data.name}\n**Category:** ${data.category}\n**Description:** ${data.description}\n**Reference:** ${data.reference_url || "Not provided"}`,
+                components: [row],
+                allowedMentions: { parse: [], users: [interaction.user.id] }
+            });
+            await interaction.editReply("✅ Your schematic request has been sent to staff for review!");
             return;
         }
 
