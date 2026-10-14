@@ -1258,7 +1258,7 @@ client.on("interactionCreate", async interaction => {
                 );
 
             await applicationPanelChannel.send({
-                content: "## 🛡️ DSMP PvP Applications\n\nChoose the position you want to apply for below.",
+                embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle("🛡️ DSMP PvP Applications").setDescription("Choose the position you want to apply for below.")],
                 components: [new ActionRowBuilder().addComponents(menu)]
             });
 
@@ -1277,7 +1277,7 @@ client.on("interactionCreate", async interaction => {
                     .setStyle(ButtonStyle.Primary)
             );
             await channel.send({
-                content: "## 📐 Request a Schematic\nHave a schematic you want us to consider? Click the button below to get started.",
+                embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle("📐 Request a Schematic").setDescription("Have a schematic you want us to consider? Click the button below to get started.")],
                 components: [row]
             });
             await interaction.editReply(`✅ Schematic request panel sent to <#${channel.id}>.`);
@@ -1300,7 +1300,7 @@ client.on("interactionCreate", async interaction => {
                     description: (cat.schematic_count + " published schematics").slice(0, 100)
                 })));
             await channel.send({
-                content: "## DSMP PvP Schematic Library\nChoose a category to browse published .litematic files.",
+                embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle("DSMP PvP Schematic Library").setDescription("Choose a category to browse published .litematic files.")],
                 components: [new ActionRowBuilder().addComponents(menu)]
             });
             await interaction.reply({ content: "Schematic library panel posted.", ephemeral: true });
