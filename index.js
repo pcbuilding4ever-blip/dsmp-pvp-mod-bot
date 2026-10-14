@@ -701,6 +701,60 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId === "schematic_request_start") {
+                const modal = new ModalBuilder()
+                    .setCustomId("schematic_request_form")
+                    .setTitle("Schematic Request")
+                    .addComponents(
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("schematic_theme")
+                                .setLabel("Theme")
+                                .setStyle(TextInputStyle.Short)
+                                .setPlaceholder("e.g. medieval, modern, fantasy")
+                                .setRequired(true)
+                                .setMaxLength(100)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("schematic_colours")
+                                .setLabel("Colours")
+                                .setStyle(TextInputStyle.Short)
+                                .setPlaceholder("e.g. white, blue, grey")
+                                .setRequired(true)
+                                .setMaxLength(150)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("schematic_max_size")
+                                .setLabel("Maximum size")
+                                .setStyle(TextInputStyle.Short)
+                                .setPlaceholder("e.g. 50x50x30 blocks")
+                                .setRequired(true)
+                                .setMaxLength(100)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("schematic_use")
+                                .setLabel("What will you use it for?")
+                                .setStyle(TextInputStyle.Paragraph)
+                                .setPlaceholder("e.g. base, farm, decoration, PvP")
+                                .setRequired(true)
+                                .setMaxLength(1000)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("schematic_ref_images")
+                                .setLabel("Reference image links")
+                                .setStyle(TextInputStyle.Paragraph)
+                                .setPlaceholder("Paste image URLs, or write None")
+                                .setRequired(true)
+                                .setMaxLength(1000)
+                        )
+                    );
+                await interaction.showModal(modal);
+                return;
+            }
             if (interaction.customId.startsWith("game_join:")) {
                 const gameId = interaction.customId.split(":")[1];
                 const games = loadGames();
@@ -814,6 +868,26 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isModalSubmit()) {
+            if (interaction.customId === "schematic_request_form") {
+                const theme = interaction.fields.getTextInputValue("schematic_theme");
+                const colours = interaction.fields.getTextInputValue("schematic_colours");
+                const maxSize = interaction.fields.getTextInputValue("schematic_max_size");
+                const use = interaction.fields.getTextInputValue("schematic_use");
+                const refImages = interaction.fields.getTextInputValue("schematic_ref_images");
+                await interaction.reply({
+                    content: [
+                        "✅ **Your schematic request form was submitted!**",
+                        "",
+                        "**Theme:** " + theme,
+                        "**Colours:** " + colours,
+                        "**Maximum size:** " + maxSize,
+                        "**Use:** " + use,
+                        "**Reference images:** " + refImages
+                    ].join("\n"),
+                    ephemeral: true
+                });
+                return;
+            }
             if (
     interaction.customId === "settings_logs" ||
     interaction.customId === "settings_words"
