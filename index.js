@@ -720,8 +720,10 @@ client.on("interactionCreate", async interaction => {
                 });
                 await thread.members.add(requesterId).catch(() => {});
                 await thread.members.add(interaction.user.id).catch(() => {});
+                const originalEmbed = interaction.message.embeds[0];
                 await thread.send({
                     content: "<@&1559818368742334524> <@" + requesterId + "> A schematic request ticket has been opened by <@" + interaction.user.id + ">.",
+                    embeds: originalEmbed ? [originalEmbed] : [],
                     allowedMentions: { users: [requesterId, interaction.user.id], roles: ["1559818368742334524"] }
                 });
                 await interaction.reply({ content: "✅ Ticket opened: <#" + thread.id + ">", ephemeral: true });
