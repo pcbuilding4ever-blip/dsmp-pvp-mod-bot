@@ -1613,7 +1613,7 @@ if (interaction.commandName === "stats") {
                 await interaction.reply({ content: `🎫 You already have an open report/support ticket: <#${result.thread.id}>`, ephemeral: true });
                 return;
             }
-            await result.thread.send({ content: `🚨 **Report submitted**\\nReported user: <@${user.id}>\\nReason: ${reason}\\nReported by: <@${interaction.user.id}>` });
+            await result.thread.send({ embeds: [new EmbedBuilder().setColor(0xED4245).setTitle("🚨 Report submitted").addFields({ name: "Reported user", value: `<@${user.id}>` }, { name: "Reason", value: reason.slice(0, 1024) }, { name: "Reported by", value: `<@${interaction.user.id}>` }).setTimestamp()] });
             await interaction.reply({ content: `✅ Your report has been sent privately: <#${result.thread.id}>`, ephemeral: true });
             return;
         }
