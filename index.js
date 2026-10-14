@@ -874,16 +874,36 @@ client.on("interactionCreate", async interaction => {
                 const maxSize = interaction.fields.getTextInputValue("schematic_max_size");
                 const use = interaction.fields.getTextInputValue("schematic_use");
                 const refImages = interaction.fields.getTextInputValue("schematic_ref_images");
+                const requestChannel = await interaction.guild.channels.fetch("1559819140514971668").catch(() => null);
+
+                if (!requestChannel || !requestChannel.isTextBased()) {
+                    await interaction.reply({
+                        content: "❌ I couldn't find the schematic request channel. Please tell staff.",
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                await requestChannel.send({
+                    content: "📐 **New Schematic Request**\\nSubmitted by: <@"
+                        + interaction.user.id + ">",
+                    embeds: [{
+                        color: 0x5865F2,
+                        title: "Schematic Request",
+                        fields: [
+                            { name: "Theme", value: theme.slice(0, 1024) },
+                            { name: "Colours", value: colours.slice(0, 1024) },
+                            { name: "Maximum size", value: maxSize.slice(0, 1024) },
+                            { name: "Use", value: use.slice(0, 1024) },
+                            { name: "Reference images", value: refImages.slice(0, 1024) }
+                        ],
+                        footer: { text: "Requester ID: " + interaction.user.id },
+                        timestamp: new Date().toISOString()
+                    }]
+                });
+
                 await interaction.reply({
-                    content: [
-                        "✅ **Your schematic request form was submitted!**",
-                        "",
-                        "**Theme:** " + theme,
-                        "**Colours:** " + colours,
-                        "**Maximum size:** " + maxSize,
-                        "**Use:** " + use,
-                        "**Reference images:** " + refImages
-                    ].join("\n"),
+                    content: "✅ Your schematic request has been sent to staff!",
                     ephemeral: true
                 });
                 return;
