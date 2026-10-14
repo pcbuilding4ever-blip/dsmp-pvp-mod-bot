@@ -1225,6 +1225,39 @@ client.on("interactionCreate", async interaction => {
             return;
         }
 
+        if (interaction.commandName === "ticketpanel") {
+            await interaction.deferReply({ ephemeral: true });
+            try {
+                const channel = interaction.channel;
+                if (!channel || !channel.isTextBased()) {
+                    await interaction.editReply("❌ Run this command in a text channel.");
+                    return;
+                }
+                const panelEmbed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle("🎫 Support Tickets")
+                    .setDescription("Need help from staff? Use the button below to open a private support ticket. Please explain your issue clearly and wait for a staff member to respond.")
+                    .setFooter({ text: "DSMP PvP • Support" });
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("support_ticket_open")
+                        .setLabel("Open Ticket")
+                        .setEmoji("🎫")
+                        .setStyle(ButtonStyle.Primary)
+                );
+                await channel.send({ embeds: [panelEmbed], components: [row] });
+                await interaction.editReply("✅ Ticket panel posted.");
+            } catch (error) {
+                console.error("Failed to post ticket panel:", error);
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply("❌ Couldn't post the ticket panel. Check the bot's channel permissions.");
+                } else {
+                    await interaction.reply({ content: "❌ Couldn't post the ticket panel. Check the bot's channel permissions.", ephemeral: true });
+                }
+            }
+            return;
+        }
+
         if (interaction.commandName === "staffapply") {
             const applicationPanelChannel = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID);
 
