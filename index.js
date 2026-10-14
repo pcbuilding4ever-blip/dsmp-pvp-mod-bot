@@ -714,10 +714,13 @@ client.on("interactionCreate", async interaction => {
                     return;
                 }
                 const thread = await parent.threads.create({
-                    name: "schematic-" + interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40),
+                    name: ("schematic-" + interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40)).slice(0, 100),
                     type: ChannelType.PrivateThread,
                     invitable: false,
                     reason: "Schematic request ticket opened by " + interaction.user.tag
+                }).catch(error => {
+                    console.error("Schematic ticket thread creation failed:", error);
+                    throw new Error("Couldn't create the private ticket thread. Check the bot's Create Private Threads permission in the ticket channel.");
                 });
                 await thread.members.add(requesterId).catch(() => {});
                 await thread.members.add(interaction.user.id).catch(() => {});
@@ -728,6 +731,9 @@ client.on("interactionCreate", async interaction => {
                     content: "<@&1559818368742334524> <@" + requesterId + "> A schematic request ticket has been opened by <@" + interaction.user.id + ">.",
                     embeds: originalEmbed ? [originalEmbed] : [],
                     allowedMentions: { users: [requesterId, interaction.user.id], roles: ["1559818368742334524"] }
+                }).catch(error => {
+                    console.error("Schematic ticket first message failed:", error);
+                    throw new Error("The ticket was created, but I couldn't send its first message. Check Send Messages in Threads and Embed Links permissions.");
                 });
                 await interaction.reply({ content: "✅ Ticket opened: <#" + thread.id + ">", ephemeral: true });
                 return;
