@@ -1109,7 +1109,7 @@ client.on("interactionCreate", async interaction => {
                 new ButtonBuilder()
                     .setCustomId("schematic_request_start")
                     .setLabel("Request a Schematic")
-                    .setEmoji("📐")
+                    .setEmoji("🏗️")
                     .setStyle(ButtonStyle.Primary)
             );
             await channel.send({
