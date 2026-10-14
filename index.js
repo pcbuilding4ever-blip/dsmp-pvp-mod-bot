@@ -701,6 +701,47 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId.startsWith("schematic_request_open_ticket:")) {
+                if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+                    await interaction.reply({ content: "❌ Only staff can open request tickets.", ephemeral: true });
+                    return;
+                }
+                const requesterId = interaction.customId.split(":")[1];
+                const parent = await interaction.guild.channels.fetch(TICKET_CHANNEL_ID).catch(() => null);
+                if (!parent || parent.type !== ChannelType.GuildText) {
+                    await interaction.reply({ content: "❌ The ticket channel could not be found.", ephemeral: true });
+                    return;
+                }
+                const thread = await parent.threads.create({
+                    name: "schematic-" + interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40),
+                    type: ChannelType.PrivateThread,
+                    invitable: false,
+                    reason: "Schematic request ticket opened by " + interaction.user.tag
+                });
+                await thread.members.add(requesterId).catch(() => {});
+                await thread.members.add(interaction.user.id).catch(() => {});
+                await thread.send({
+                    content: "<@&1559818368742334524> <@" + requesterId + "> A schematic request ticket has been opened by <@" + interaction.user.id + ">.",
+                    allowedMentions: { users: [requesterId, interaction.user.id], roles: ["1559818368742334524"] }
+                });
+                await interaction.reply({ content: "✅ Ticket opened: <#" + thread.id + ">", ephemeral: true });
+                return;
+            }
+
+            if (interaction.customId.startsWith("schematic_request_deny:")) {
+                if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+                    await interaction.reply({ content: "❌ Only staff can deny requests.", ephemeral: true });
+                    return;
+                }
+                const requesterId = interaction.customId.split(":")[1];
+                const requester = await client.users.fetch(requesterId).catch(() => null);
+                if (requester) {
+                    await requester.send("Sorry, we didn't do your schematic. You can request it again if you would like!").catch(() => {});
+                }
+                await interaction.message.edit({ components: [] });
+                await interaction.reply({ content: "🗑️ Request denied.", ephemeral: true });
+                return;
+            }
             if (interaction.customId === "schematic_request_start") {
                 const modal = new ModalBuilder()
                     .setCustomId("schematic_request_form")
@@ -884,7 +925,7 @@ client.on("interactionCreate", async interaction => {
                     return;
                 }
 
-                await requestChannel.send({
+                const requestMessage = await requestChannel.send({
                     content: "📐 **New Schematic Request**\nSubmitted by: <@"
                         + interaction.user.id + ">",
                     embeds: [{
@@ -899,7 +940,17 @@ client.on("interactionCreate", async interaction => {
                         ],
                         footer: { text: "Requester ID: " + interaction.user.id },
                         timestamp: new Date().toISOString()
-                    }]
+                    }],
+                    components: [new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId("schematic_request_open_ticket:" + interaction.user.id)
+                            .setLabel("Open ticket")
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId("schematic_request_deny:" + interaction.user.id)
+                            .setLabel("Deny")
+                            .setStyle(ButtonStyle.Danger)
+                    )]
                 });
 
                 await interaction.reply({
