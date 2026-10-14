@@ -1105,24 +1105,18 @@ client.on("interactionCreate", async interaction => {
         if (interaction.commandName === "schematic-request-panel") {
             await interaction.deferReply({ ephemeral: true });
             const channel = interaction.options.getChannel("channel", true);
-            const cats = await schematicLibrary.listCategories();
-            if (!cats.length) {
-                await interaction.editReply("No schematic categories exist yet, so there is nothing to show in the panel.");
-                return;
-            }
-            const menu = new StringSelectMenuBuilder()
-                .setCustomId("schematic_category")
-                .setPlaceholder("Choose a schematic category")
-                .addOptions(cats.slice(0, 25).map(cat => ({
-                    label: cat.name.slice(0, 100),
-                    value: String(cat.id),
-                    description: (cat.schematic_count + " published schematics").slice(0, 100)
-                })));
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId("schematic_request_start")
+                    .setLabel("Request a Schematic")
+                    .setEmoji("📐")
+                    .setStyle(ButtonStyle.Primary)
+            );
             await channel.send({
-                content: "## DSMP PvP Schematic Library\nChoose a category below to browse published .litematic files and get a secure download link.",
-                components: [new ActionRowBuilder().addComponents(menu)]
+                content: "## 📐 Request a Schematic\nHave a schematic you want us to consider? Click the button below to get started.",
+                components: [row]
             });
-            await interaction.editReply(`✅ Schematic browsing panel sent to <#${channel.id}>.`);
+            await interaction.editReply(`✅ Schematic request panel sent to <#${channel.id}>.`);
             return;
         }
 
