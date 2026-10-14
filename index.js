@@ -1,6 +1,7 @@
 const {
     Client,
     AttachmentBuilder,
+    EmbedBuilder,
     GatewayIntentBits,
     REST,
     Routes,
@@ -720,7 +721,9 @@ client.on("interactionCreate", async interaction => {
                 });
                 await thread.members.add(requesterId).catch(() => {});
                 await thread.members.add(interaction.user.id).catch(() => {});
-                const originalEmbed = interaction.message.embeds[0];
+                const originalEmbed = interaction.message.embeds[0]
+                    ? EmbedBuilder.from(interaction.message.embeds[0]).toJSON()
+                    : null;
                 await thread.send({
                     content: "<@&1559818368742334524> <@" + requesterId + "> A schematic request ticket has been opened by <@" + interaction.user.id + ">.",
                     embeds: originalEmbed ? [originalEmbed] : [],
