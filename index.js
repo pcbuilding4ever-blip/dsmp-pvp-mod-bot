@@ -833,11 +833,11 @@ client.on("interactionCreate", async interaction => {
                 if (!event || event.ended) { await interaction.reply({ content: "This challenge has ended.", ephemeral: true }); return; }
                 const questions = {
                     flag: [
-                        ["🇯🇵",["Japan","China","South Korea","Thailand"],0],["🇨🇦",["United States","Canada","Denmark","Austria"],1],
-                        ["🇧🇷",["Portugal","Brazil","Argentina","Mexico"],1],["🇫🇷",["France","Netherlands","Russia","Italy"],0],
-                        ["🇦🇺",["New Zealand","Australia","Fiji","United Kingdom"],1],["🇩🇪",["Belgium","Germany","Spain","Poland"],1],
-                        ["🇮🇳",["India","Ireland","Niger","Pakistan"],0],["🇸🇪",["Finland","Norway","Sweden","Iceland"],2],
-                        ["🇲🇽",["Mexico","Italy","Hungary","Bulgaria"],0],["🇿🇦",["Kenya","South Africa","Nigeria","Ghana"],1]
+                        ["https://flagcdn.com/w320/jp.png",["Japan","China","South Korea","Thailand"],0],["https://flagcdn.com/w320/ca.png",["United States","Canada","Denmark","Austria"],1],
+                        ["https://flagcdn.com/w320/br.png",["Portugal","Brazil","Argentina","Mexico"],1],["https://flagcdn.com/w320/fr.png",["France","Netherlands","Russia","Italy"],0],
+                        ["https://flagcdn.com/w320/au.png",["New Zealand","Australia","Fiji","United Kingdom"],1],["https://flagcdn.com/w320/de.png",["Belgium","Germany","Spain","Poland"],1],
+                        ["https://flagcdn.com/w320/in.png",["India","Ireland","Niger","Pakistan"],0],["https://flagcdn.com/w320/se.png",["Finland","Norway","Sweden","Iceland"],2],
+                        ["https://flagcdn.com/w320/mx.png",["Mexico","Italy","Hungary","Bulgaria"],0],["https://flagcdn.com/w320/za.png",["Kenya","South Africa","Nigeria","Ghana"],1]
                     ],
                     number: [
                         ["What comes next: 2, 4, 6, 8, ?",["9","10","12","14"],1],["What is 7 × 6?",["36","40","42","48"],2],
@@ -878,14 +878,14 @@ client.on("interactionCreate", async interaction => {
                 saveGames(events);
                 const q = qs[0];
                 const row = new ActionRowBuilder().addComponents(q[1].map((answer,i) => new ButtonBuilder().setCustomId("skillanswer:" + id + ":" + i).setLabel(answer).setStyle(ButtonStyle.Secondary)));
-                await interaction.reply({ content: "**Question 1/" + qs.length + "**\n" + q[0] + (event.type === "flag" ? "\nChoose the country for this flag:" : ""), components: [row], ephemeral: true });
+                await interaction.reply({ content: "**Question 1/" + qs.length + "**" + (event.type === "flag" ? "\nIdentify the flag shown in the image:" : "\n" + q[0]), embeds: event.type === "flag" ? [new EmbedBuilder().setColor(0x7c3aed).setTitle("🇺🇳 Guess the Flag").setImage(q[0])] : [], components: [row], ephemeral: true });
                 return;
             }
             if (interaction.customId.startsWith("skillanswer:")) {
                 const parts = interaction.customId.split(":"); const id = parts[1]; const choice = Number(parts[2]);
                 const events = loadGames(); const event = events[id];
                 const questions = {
-                    flag: [["🇯🇵",["Japan","China","South Korea","Thailand"],0],["🇨🇦",["United States","Canada","Denmark","Austria"],1],["🇧🇷",["Portugal","Brazil","Argentina","Mexico"],1],["🇫🇷",["France","Netherlands","Russia","Italy"],0],["🇦🇺",["New Zealand","Australia","Fiji","United Kingdom"],1],["🇩🇪",["Belgium","Germany","Spain","Poland"],1],["🇮🇳",["India","Ireland","Niger","Pakistan"],0],["🇸🇪",["Finland","Norway","Sweden","Iceland"],2],["🇲🇽",["Mexico","Italy","Hungary","Bulgaria"],0],["🇿🇦",["Kenya","South Africa","Nigeria","Ghana"],1]],
+                    flag: [["https://flagcdn.com/w320/jp.png",["Japan","China","South Korea","Thailand"],0],["https://flagcdn.com/w320/ca.png",["United States","Canada","Denmark","Austria"],1],["https://flagcdn.com/w320/br.png",["Portugal","Brazil","Argentina","Mexico"],1],["https://flagcdn.com/w320/fr.png",["France","Netherlands","Russia","Italy"],0],["https://flagcdn.com/w320/au.png",["New Zealand","Australia","Fiji","United Kingdom"],1],["https://flagcdn.com/w320/de.png",["Belgium","Germany","Spain","Poland"],1],["https://flagcdn.com/w320/in.png",["India","Ireland","Niger","Pakistan"],0],["https://flagcdn.com/w320/se.png",["Finland","Norway","Sweden","Iceland"],2],["https://flagcdn.com/w320/mx.png",["Mexico","Italy","Hungary","Bulgaria"],0],["https://flagcdn.com/w320/za.png",["Kenya","South Africa","Nigeria","Ghana"],1]],
                     number: [["What comes next: 2, 4, 6, 8, ?",["9","10","12","14"],1],["What is 7 × 6?",["36","40","42","48"],2],["What comes next: 1, 1, 2, 3, 5, ?",["6","7","8","9"],2],["What is 81 ÷ 9?",["7","8","9","10"],2],["What is 15 + 17?",["30","31","32","33"],2]],
                     trivia: [["Which material is used to craft a standard torch?",["Coal or charcoal","Iron","Redstone","Flint"],0],["Which dimension contains Endermen naturally?",["Overworld only","Nether only","The End","None"],2],["What tool is best for mining stone?",["Hoe","Pickaxe","Shovel","Sword"],1],["Which mob explodes near players?",["Skeleton","Creeper","Spider","Slime"],1],["What do you need to enter the End portal in survival?",["Eyes of Ender","Blaze rods only","Diamonds","Ghast tears"],0],["Which ore drops experience when mined without Silk Touch?",["Iron ore","Coal ore","Ancient debris","None"],1],["What does a shield help block?",["Many incoming attacks","Fall damage","Hunger","All status effects"],0],["Which mob trades with gold in the Nether?",["Villager","Piglin","Witch","Allay"],1],["What grows into a tree?",["Sapling","Stick","Vine","Bamboo only"],0],["Which item repairs elytra in an anvil?",["Leather","Phantom membranes","Feathers","String"],1]],
                     crystal: [["What block is required to place an End Crystal?",["Obsidian or bedrock","Stone","Dirt","Glass"],0],["What item is commonly used to respawn the Ender Dragon?",["End crystal","Totem","Beacon","Ender pearl"],0],["What can protect you from one lethal hit?",["Totem of Undying","Compass","Spyglass","Lead"],0],["What effect does a golden apple provide?",["Regeneration/absorption effects","Mining fatigue","Levitation","Bad omen"],0],["Which item helps you move quickly between positions?",["Ender pearl","Bucket","Shield","Anvil"],0],["What armor material generally offers strong protection?",["Leather","Netherite","Gold","Chainmail"],1],["What is the main risk of placing crystals too close?",["Self-damage","Losing hunger instantly","Weather changes","Villagers despawn"],0],["What can reduce explosion damage?",["Blast Protection","Feather Falling only","Aqua Affinity","Thorns only"],0],["Which item can save you from a fatal hit if charged?",["Totem of Undying","Clock","Map","Fishing rod"],0],["Why do players use obsidian in crystal PvP?",["It supports crystal placement","It heals players","It disables armor","It prevents all damage"],0]]
@@ -905,7 +905,7 @@ client.on("interactionCreate", async interaction => {
                 saveGames(events);
                 const next = qs[session.index];
                 const row = new ActionRowBuilder().addComponents(next[1].map((answer,i) => new ButtonBuilder().setCustomId("skillanswer:" + id + ":" + i).setLabel(answer).setStyle(ButtonStyle.Secondary)));
-                await interaction.update({ content: "**Question " + (session.index + 1) + "/" + qs.length + "**\n" + next[0] + (event.type === "flag" ? "\nChoose the country for this flag:" : ""), components: [row] });
+                await interaction.update({ content: "**Question " + (session.index + 1) + "/" + qs.length + "**" + (event.type === "flag" ? "\nIdentify the flag shown in the image:" : "\n" + next[0]), embeds: event.type === "flag" ? [new EmbedBuilder().setColor(0x7c3aed).setTitle("🇺🇳 Guess the Flag").setImage(next[0])] : [], components: [row] });
                 return;
             }
             if (interaction.customId.startsWith("skillfinish:")) {
