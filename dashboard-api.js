@@ -261,28 +261,52 @@ function startDashboardApi(client) {
                 if (pool) await pool.end().catch(() => {});
             }
         }
+        const commandNames = ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"];
         if (req.method === "GET" && url.pathname === "/api/commands") {
-            const commandNames = ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"];
             let saved = {};
             try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
-            return sendJson(res, 200, { ok: true, commands: commandNames.map(name => ({ name, enabled: saved[name]?.enabled !== false })) });
+            return sendJson(res, 200, { ok: true, commands: commandNames.map(name => ({ name, enabled: saved[name]?.enabled !== false, channelId: saved[name]?.channelId || "" })) });
         }
         if (req.method === "POST" && url.pathname === "/api/commands/settings") {
             let input;
-            try { input = await readJson(req, 2000); } catch (error) { return sendJson(res, 400, { ok: false, error: error.message }); }
-            const allowed = new Set(["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"]);
-            if (!input || typeof input.name !== "string" || !allowed.has(input.name) || typeof input.enabled !== "boolean") return sendJson(res, 400, { ok: false, error: "invalid_command_setting" });
+            try { input = await readJson(req, 6000); } catch (error) { return sendJson(res, 400, { ok: false, error: error.message }); }
+            const allowed = new Set(commandNames);
+            if (!input || typeof input.name !== "string" || !allowed.has(input.name)) return sendJson(res, 400, { ok: false, error: "invalid_command_setting" });
             let saved = {};
             try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
-            saved[input.name] = { enabled: input.enabled };
+            const previous = saved[input.name] || { enabled: true, channelId: "" };
+            if (input.action === "reset") {
+                saved[input.name] = { enabled: true, channelId: "" };
+            } else {
+                if (input.enabled !== undefined && typeof input.enabled !== "boolean") return sendJson(res, 400, { ok: false, error: "invalid_enabled_value" });
+                if (input.channelId !== undefined && typeof input.channelId !== "string") return sendJson(res, 400, { ok: false, error: "invalid_channel_id" });
+                const channelId = input.channelId === undefined ? (previous.channelId || "") : input.channelId.trim();
+                if (channelId && !/^\d{17,20}$/.test(channelId)) return sendJson(res, 400, { ok: false, error: "invalid_channel_id" });
+                saved[input.name] = { enabled: input.enabled === undefined ? previous.enabled !== false : input.enabled, channelId };
+            }
             try {
                 const temp = "./command-settings.json.tmp";
                 fs.writeFileSync(temp, JSON.stringify(saved, null, 2), { mode: 0o600 });
                 fs.renameSync(temp, "./command-settings.json");
-                return sendJson(res, 200, { ok: true, name: input.name, enabled: input.enabled, message: "/" + input.name + (input.enabled ? " enabled." : " disabled.") });
+                return sendJson(res, 200, { ok: true, name: input.name, ...saved[input.name], message: input.action === "reset" ? "/" + input.name + " settings reset to defaults." : "/" + input.name + " settings saved." });
             } catch (error) {
                 console.error("[Dashboard API] Command settings save failed:", error.message);
                 return sendJson(res, 500, { ok: false, error: "command_settings_save_failed" });
+            }
+        }
+        if (req.method === "POST" && url.pathname === "/api/commands/resend") {
+            let input;
+            try { input = await readJson(req, 2000); } catch (error) { return sendJson(res, 400, { ok: false, error: error.message }); }
+            if (!input || typeof input.name !== "string" || !commandNames.includes(input.name)) return sendJson(res, 400, { ok: false, error: "invalid_command_name" });
+            try {
+                const registered = await client.application.commands.fetch();
+                const command = registered.find(item => item.name === input.name);
+                if (!command) return sendJson(res, 404, { ok: false, error: "command_not_registered", message: "This command is not registered globally. Resync the bot's command definitions during deployment." });
+                await command.edit({ name: command.name, description: command.description, options: command.options, defaultMemberPermissions: command.defaultMemberPermissions, dmPermission: command.dmPermission, nsfw: command.nsfw });
+                return sendJson(res, 200, { ok: true, message: "/" + input.name + " was resent to Discord." });
+            } catch (error) {
+                console.error("[Dashboard API] Command resend failed:", error.message);
+                return sendJson(res, 500, { ok: false, error: "command_resend_failed", message: error.message });
             }
         }
         if (req.method === "GET" && url.pathname === "/api/tickets") {
