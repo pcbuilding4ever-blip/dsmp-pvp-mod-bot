@@ -36,6 +36,7 @@ function startDashboardApi(client) {
     }
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url || "/", "http://localhost");
+        if (url.pathname.startsWith("/api/giveaways/")) console.log(`[Dashboard API] ${req.method} ${url.pathname} received`);
         if (req.method === "GET" && url.pathname === "/health") return sendJson(res, 200, { ok: true });
         const auth = req.headers.authorization || "";
         const match = auth.match(/^Bearer (.+)$/i);
