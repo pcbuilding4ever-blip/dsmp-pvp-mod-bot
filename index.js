@@ -1258,7 +1258,9 @@ client.on("interactionCreate", async interaction => {
         if (interaction.commandName === "rules") {
             await interaction.deferReply({ ephemeral: true });
             try {
-                const rulesChannel = await interaction.guild.channels.fetch(RULES_CHANNEL_ID);
+                let rulesChannelId = RULES_CHANNEL_ID;
+                try { const commandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); if (commandSettings.rules?.channelId) rulesChannelId = commandSettings.rules.channelId; } catch {}
+                const rulesChannel = await interaction.guild.channels.fetch(rulesChannelId);
                 if (!rulesChannel || !rulesChannel.isTextBased()) {
                     await interaction.editReply("❌ I couldn't find the rules channel. Check the channel ID.");
                     return;
@@ -1283,7 +1285,7 @@ client.on("interactionCreate", async interaction => {
                 };
 
                 await rulesChannel.send({ embeds: [rulesEmbed] });
-                await interaction.editReply("✅ Rules posted in <#" + RULES_CHANNEL_ID + ">.");
+                await interaction.editReply("✅ Rules posted in <#" + rulesChannelId + ">.");
             } catch (error) {
                 console.error("Failed to post rules:", error);
                 await interaction.editReply("❌ I couldn't post the rules. Check that I have permission to view and send messages in the rules channel.");
