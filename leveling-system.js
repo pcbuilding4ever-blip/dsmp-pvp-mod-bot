@@ -52,13 +52,13 @@ function levelFromXp(xp) {
 }
 
 const LEVEL_ROLES = [
-    { level: 5, name: "🌱 Level 5" },
-    { level: 10, name: "⚔️ Level 10" },
-    { level: 20, name: "🔥 Level 20" },
-    { level: 30, name: "💎 Level 30" },
-    { level: 50, name: "👑 Level 50" },
-    { level: 75, name: "🏆 Level 75" },
-    { level: 100, name: "💠 Level 100" }
+    { level: 5, roleId: "1553787134798856283" },
+    { level: 10, roleId: "1553787239677304993" },
+    { level: 20, roleId: "" },
+    { level: 30, roleId: "" },
+    { level: 50, roleId: "" },
+    { level: 75, roleId: "" },
+    { level: 100, roleId: "" }
 ];
 
 // Roles are matched by their exact names so server staff can create them in Discord
@@ -68,17 +68,22 @@ async function grantLevelRoles(member, level) {
     const earned = LEVEL_ROLES.filter(reward => reward.level <= level);
     const granted = [];
     for (const reward of earned) {
-        const role = member.guild.roles.cache.find(candidate => candidate.name === reward.name);
-        if (!role || member.roles.cache.has(role.id)) continue;
+        if (!reward.roleId) continue;
+        const role = member.guild.roles.cache.get(reward.roleId);
+        if (!role) {
+            console.warn(`[Leveling] Role ID ${reward.roleId} for level ${reward.level} was not found in guild ${member.guild.id}.`);
+            continue;
+        }
+        if (member.roles.cache.has(role.id)) continue;
         if (role.managed || !role.editable) {
-            console.warn(`[Leveling] Cannot assign role "${reward.name}" - check the bot's role hierarchy and permissions.`);
+            console.warn(`[Leveling] Cannot assign role ID ${reward.roleId} - check the bot's role hierarchy and permissions.`);
             continue;
         }
         try {
             await member.roles.add(role, `Reached chat level ${reward.level}`);
-            granted.push(reward.name);
+            granted.push(role.name);
         } catch (error) {
-            console.error(`[Leveling] Could not assign "${reward.name}" to ${member.id}:`, error.message);
+            console.error(`[Leveling] Could not assign role ID ${reward.roleId} to ${member.id}:`, error.message);
         }
     }
     return granted;
