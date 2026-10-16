@@ -2,6 +2,7 @@ const { Pool } = require("pg");
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 
 let pool;
+let leaderboardRefreshTimer;
 const cooldowns = new Map();
 const XP_COOLDOWN_MS = 60_000;
 const XP_MIN = 15;
@@ -19,7 +20,7 @@ function getPool() {
     return pool;
 }
 
-async function initLevelingDatabase() {
+async function initLevelingDatabase(client) {
     await getPool().query(`
         CREATE TABLE IF NOT EXISTS leveling_xp (
             guild_id TEXT NOT NULL,
@@ -29,6 +30,17 @@ async function initLevelingDatabase() {
             PRIMARY KEY (guild_id, user_id)
         )
     `);
+    await getPool().query(`
+        CREATE TABLE IF NOT EXISTS leveling_leaderboards (
+            guild_id TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            message_id TEXT NOT NULL
+        )
+    `);
+    if (client && !leaderboardRefreshTimer) {
+        leaderboardRefreshTimer = setInterval(() => refreshAllLeaderboards(client), 5 * 60 * 1000);
+        leaderboardRefreshTimer.unref?.();
+    }
 }
 
 function xpForLevel(level) {
@@ -86,6 +98,45 @@ async function grantLevelRoles(member, level) {
     return granted;
 }
 
+function relativeRefreshFooter() {
+    return "Refreshed <t:" + Math.floor(Date.now() / 1000) + ":R>";
+}
+
+async function buildLeaderboardEmbed(client, guildId) {
+    const result = await getPool().query(
+        "SELECT user_id, xp FROM leveling_xp WHERE guild_id = $1 ORDER BY xp DESC LIMIT 10",
+        [guildId]
+    );
+    const lines = await Promise.all(result.rows.map(async (row, index) => {
+        const user = await client.users.fetch(row.user_id).catch(() => null);
+        const progress = levelFromXp(row.xp);
+        return "**" + (index + 1) + ".** " + (user ? user.username : "Unknown user (" + row.user_id + ")") + " — Level **" + progress.level + "** · " + Number(row.xp).toLocaleString() + " XP";
+    }));
+    return new EmbedBuilder()
+        .setColor(0x7c3aed)
+        .setTitle("🏆 DSMP PvP Level Leaderboard")
+        .setDescription(lines.length ? lines.join("\n") : "No one has earned XP yet. Start chatting to get on the leaderboard!")
+        .setFooter({ text: relativeRefreshFooter() });
+}
+
+async function refreshAllLeaderboards(client) {
+    try {
+        const saved = await getPool().query("SELECT guild_id, channel_id, message_id FROM leveling_leaderboards");
+        for (const row of saved.rows) {
+            try {
+                const channel = await client.channels.fetch(row.channel_id);
+                if (!channel || !channel.isTextBased() || !channel.messages) continue;
+                const message = await channel.messages.fetch(row.message_id);
+                const embed = await buildLeaderboardEmbed(client, row.guild_id);
+                await message.edit({ embeds: [embed] });
+            } catch (error) {
+                console.warn("[Leveling] Could not refresh leaderboard for guild " + row.guild_id + ":", error.message);
+            }
+        }
+    } catch (error) {
+        console.error("[Leveling] Leaderboard refresh failed:", error.message);
+    }
+}
 async function awardMessageXp(message) {
     if (!message.guild || message.author.bot || !message.content.trim()) return;
     const key = `${message.guild.id}:${message.author.id}`;
@@ -149,7 +200,7 @@ async function handleInteraction(interaction) {
     if (!["rank", "leaderboard"].includes(interaction.commandName)) return false;
 
     try {
-        await initLevelingDatabase();
+        await initLevelingDatabase(interaction.client);
         if (interaction.commandName === "rank") {
             const user = interaction.options.getUser("user") || interaction.user;
             const result = await getPool().query(
@@ -172,24 +223,32 @@ async function handleInteraction(interaction) {
                 );
             await interaction.reply({ embeds: [embed] });
         } else {
-            const result = await getPool().query(
-                "SELECT user_id, xp FROM leveling_xp WHERE guild_id = $1 ORDER BY xp DESC LIMIT 10",
-                [interaction.guildId]
-            );
-            if (!result.rows.length) {
-                await interaction.reply({ content: "No one has earned XP yet. Start chatting to get on the leaderboard!" });
+            const channel = interaction.channel;
+            if (!channel || !channel.isTextBased() || !channel.messages) {
+                await interaction.reply({ content: "Please run this command in a normal text channel.", ephemeral: true });
                 return true;
             }
-            const lines = await Promise.all(result.rows.map(async (row, index) => {
-                const user = await interaction.client.users.fetch(row.user_id).catch(() => null);
-                const progress = levelFromXp(row.xp);
-                return `**${index + 1}.** ${user ? user.username : `Unknown user (${row.user_id})`} — Level **${progress.level}** · ${Number(row.xp).toLocaleString()} XP`;
-            }));
-            const embed = new EmbedBuilder()
-                .setColor(0x7c3aed)
-                .setTitle("🏆 DSMP PvP Level Leaderboard")
-                .setDescription(lines.join("\n"));
-            await interaction.reply({ embeds: [embed] });
+            const embed = await buildLeaderboardEmbed(interaction.client, interaction.guildId);
+            const saved = await getPool().query(
+                "SELECT channel_id, message_id FROM leveling_leaderboards WHERE guild_id = $1",
+                [interaction.guildId]
+            );
+            let leaderboardMessage = null;
+            if (saved.rows[0] && saved.rows[0].channel_id === channel.id) {
+                leaderboardMessage = await channel.messages.fetch(saved.rows[0].message_id).catch(() => null);
+            }
+            if (leaderboardMessage) {
+                await leaderboardMessage.edit({ embeds: [embed] });
+            } else {
+                leaderboardMessage = await channel.send({ embeds: [embed] });
+            }
+            await getPool().query(
+                `INSERT INTO leveling_leaderboards (guild_id, channel_id, message_id)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (guild_id) DO UPDATE SET channel_id = EXCLUDED.channel_id, message_id = EXCLUDED.message_id`,
+                [interaction.guildId, channel.id, leaderboardMessage.id]
+            );
+            await interaction.reply({ content: "🏆 Leaderboard posted in <#" + channel.id + ">. It refreshes automatically every 5 minutes.", ephemeral: true });
         }
     } catch (error) {
         console.error("Level command failed:", error.message);
