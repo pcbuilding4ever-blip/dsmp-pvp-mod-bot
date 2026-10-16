@@ -467,7 +467,7 @@ const rest = new REST({ version: "10" })
     .setToken(process.env.BOT_TOKEN);
 
 client.once("ready", async () => {
-    console.log(`🔥 DSMP PvP Mod Bot online as ${client.user.tag}`);
+    console.log(`🔥 AnchorFall Mod Bot online as ${client.user.tag}`);
 
     try {
         await vouchSystem.initVouchDatabase();
@@ -665,7 +665,7 @@ client.on("interactionCreate", async interaction => {
                 const configs = {
                     staff: {
                         id: "application_staff",
-                        title: "DSMP PvP Staff Application",
+                        title: "AnchorFall Staff Application",
                         fields: [
                             ["app_age", "How old are you?", TextInputStyle.Short, 3],
                             ["app_timezone", "What is your timezone?", TextInputStyle.Short, 50],
@@ -1370,7 +1370,7 @@ client.on("interactionCreate", async interaction => {
                     .setColor(0x5865F2)
                     .setTitle("🎫 Support Tickets")
                     .setDescription("Need help from staff? Use the button below to open a private support ticket. Please explain your issue clearly and wait for a staff member to respond.")
-                    .setFooter({ text: "DSMP PvP • Support" });
+                    .setFooter({ text: "AnchorFall • Support" });
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId("support_ticket_open")
@@ -1424,7 +1424,7 @@ client.on("interactionCreate", async interaction => {
                 );
 
             await applicationPanelChannel.send({
-                embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle("🛡️ DSMP PvP Applications").setDescription("Choose the position you want to apply for below.")],
+                embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle("🛡️ AnchorFall Applications").setDescription("Choose the position you want to apply for below.")],
                 components: [new ActionRowBuilder().addComponents(menu)]
             });
 
@@ -1466,7 +1466,7 @@ client.on("interactionCreate", async interaction => {
                     description: (cat.schematic_count + " published schematics").slice(0, 100)
                 })));
             await channel.send({
-                embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle("DSMP PvP Schematic Library").setDescription("Choose a category to browse published .litematic files.")],
+                embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle("AnchorFall Schematic Library").setDescription("Choose a category to browse published .litematic files.")],
                 components: [new ActionRowBuilder().addComponents(menu)]
             });
             await interaction.reply({ content: "Schematic library panel posted.", ephemeral: true });
@@ -1491,7 +1491,7 @@ client.on("interactionCreate", async interaction => {
             const instructions = { flag: "10 flag questions • 10 points each • 100 points maximum", number: "5 logic-based number puzzles • 1 point each • 5 points maximum", trivia: "10 Minecraft knowledge questions • 1 point each", crystal: "10 Crystal PvP knowledge questions • 1 point each" };
             const embed = new EmbedBuilder().setColor(0x7c3aed).setTitle("🏆 SKILL GAME CHALLENGE")
                 .setDescription("**Game:** " + titles[type] + "\n**Prize:** " + prize + "\n**Hosted by:** <@" + interaction.user.id + ">\n\n" + instructions[type] + "\n\nPress **Play** to take the quiz. Your answers are scored automatically. Highest score wins; ties require a skill-based tiebreaker, never a random draw.")
-                .setFooter({ text: "DSMP PvP • Skill decides the winner" });
+                .setFooter({ text: "AnchorFall • Skill decides the winner" });
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId("skillplay:" + id).setLabel("Play Challenge").setEmoji("🎮").setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId("skillfinish:" + id).setLabel("End & Pick Winner").setEmoji("🏆").setStyle(ButtonStyle.Success)
@@ -1716,7 +1716,7 @@ if (interaction.commandName === "settings") {
 
     await interaction.reply({
         content:
-            "⚙️ **DSMP PvP Bot Settings**\n\n" +
+            "⚙️ **AnchorFall Bot Settings**\n\n" +
             "Choose a setting below.",
         components: [
             new ActionRowBuilder().addComponents(menu)
@@ -1775,7 +1775,7 @@ if (interaction.commandName === "announce") {
     for (const member of membersWithRole.values()) {
         try {
             await member.send(
-                `📢 **DSMP PvP Announcement**\n\n${message}`
+                `📢 **AnchorFall Announcement**\n\n${message}`
             );
             sent++;
         } catch {
@@ -1797,7 +1797,7 @@ if (interaction.commandName === "stats") {
             const guild = interaction.guild;
             const humans = guild.members.cache.filter(m => !m.user.bot).size;
             const bots = guild.members.cache.filter(m => m.user.bot).size;
-            await interaction.reply(`📊 **DSMP PvP Stats**\\n\\n👥 Members: **${guild.memberCount}**\\n👤 Humans cached: **${humans}**\\n🤖 Bots cached: **${bots}**\\n💬 Channels: **${guild.channels.cache.size}**\\n🎭 Roles: **${guild.roles.cache.size - 1}**\\n🎫 Active tickets: **${guild.channels.cache.filter(c => c.isThread() && !c.archived).size}**`);
+            await interaction.reply(`📊 **AnchorFall Stats**\\n\\n👥 Members: **${guild.memberCount}**\\n👤 Humans cached: **${humans}**\\n🤖 Bots cached: **${bots}**\\n💬 Channels: **${guild.channels.cache.size}**\\n🎭 Roles: **${guild.roles.cache.size - 1}**\\n🎫 Active tickets: **${guild.channels.cache.filter(c => c.isThread() && !c.archived).size}**`);
             return;
         }
 
