@@ -66,14 +66,14 @@ function startDashboardApi(client) {
             let input; try { input = await readJson(req); } catch (e) { return sendJson(res, 400, { ok:false, error:e.message }); }
             const guildId=String(input.guildId||""), channelId=String(input.channelId||""), prize=typeof input.prize==="string"?input.prize.trim():"", durationText=typeof input.duration==="string"?input.duration.trim():"";
             const dm=durationText.match(/^(\d+)(s|m|h|d)$/i), duration=dm?Number(dm[1])*({s:1000,m:60000,h:3600000,d:86400000}[dm[2].toLowerCase()]):0;
-            const winnerCount=Number(input.winnerCount), maxEntries=Number(input.maxEntries);
-            if(!/^\d{17,20}$/.test(guildId)||!/^\d{17,20}$/.test(channelId)||!prize||prize.length>200||!duration||duration<10000||duration>604800000||!Number.isInteger(winnerCount)||winnerCount<1||winnerCount>20||!Number.isInteger(maxEntries)||maxEntries<0||maxEntries>10000) return sendJson(res,400,{ok:false,error:"invalid_giveaway",message:"Check channel, prize, winners, entry limit and duration (10s–7d)."});
+            const winnerCount=Number(input.winnerCount), maxEntries=Number(input.maxEntries), pingRoleId=String(input.pingRoleId||"").trim();
+            if(!/^\d{17,20}$/.test(guildId)||!/^\d{17,20}$/.test(channelId)||!prize||prize.length>200||!duration||duration<10000||duration>604800000||!Number.isInteger(winnerCount)||winnerCount<1||winnerCount>20||!Number.isInteger(maxEntries)||maxEntries<0||maxEntries>10000||(pingRoleId&&!/^\\d{17,20}$/.test(pingRoleId))) return sendJson(res,400,{ok:false,error:"invalid_giveaway",message:"Check channel, prize, winners, entry limit, ping role and duration (10s–7d)."});
             try {
                 const guild=await client.guilds.fetch(guildId), channel=await client.channels.fetch(channelId);
                 if(!guild||!channel||!channel.isTextBased()||channel.guildId!==guildId) return sendJson(res,400,{ok:false,error:"invalid_channel",message:"Choose a text channel in the selected server."});
                 let all={};try{all=JSON.parse(fs.readFileSync("./giveaways.json","utf8"))}catch{}
                 const id=Date.now().toString(36)+"-"+crypto.randomBytes(4).toString("hex"),hostId=/^\d{17,20}$/.test(String(input.hostId||""))?String(input.hostId):client.user.id;
-                const g={id,hostId,prize,winnerCount,duration,maxEntries,entries:[],winners:[],channelId,messageId:null,endAt:Date.now()+duration,ended:false};
+                const g={id,hostId,prize,winnerCount,duration,maxEntries,pingRoleId,entries:[],winners:[],channelId,messageId:null,endAt:Date.now()+duration,ended:false};
                 const {ActionRowBuilder,ButtonBuilder,ButtonStyle}=require("discord.js");
                 const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("giveaway_enter:"+id).setLabel("Enter Giveaway").setEmoji("🎉").setStyle(ButtonStyle.Primary));
                 const message=await channel.send({content:"# 🎉 GIVEAWAY\n\n🎁 **Prize:** "+prize+"\n👤 **Hosted by:** <@"+hostId+">\n🏆 **Winners:** "+winnerCount+"\n⏱️ **Time:** "+durationText+"\n👥 **Max entries:** "+(maxEntries===0?"Unlimited":maxEntries)+"\n\nClick **Enter Giveaway** below to enter!",components:[row]});
