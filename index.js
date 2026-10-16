@@ -974,7 +974,7 @@ client.on("interactionCreate", async interaction => {
                 const giveaway = giveaways[giveawayId];
                 if (!giveaway || giveaway.ended || giveaway.endAt <= Date.now()) { await interaction.reply({ content: "❌ This giveaway has ended.", ephemeral: true }); return; }
                 if (giveaway.entries.includes(interaction.user.id)) { await interaction.reply({ content: "⚠️ You are already entered in this giveaway.", ephemeral: true }); return; }
-                if (giveaway.entries.length >= giveaway.maxEntries) { await interaction.reply({ content: "❌ This giveaway has reached the maximum number of entries.", ephemeral: true }); return; }
+                if (Number(giveaway.maxEntries) > 0 && giveaway.entries.length >= giveaway.maxEntries) { await interaction.reply({ content: "❌ This giveaway has reached the maximum number of entries.", ephemeral: true }); return; }
                 giveaway.entries.push(interaction.user.id);
                 saveGiveaways(giveaways);
                 await interaction.reply({ content: "✅ You are entered in the giveaway! Good luck 🤝🔥", ephemeral: true });
@@ -1580,7 +1580,7 @@ client.on("interactionCreate", async interaction => {
             const giveawayId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
             const giveaway = { id: giveawayId, hostId: host.id, prize, winnerCount, duration, maxEntries, entries: [], winners: [], channelId: interaction.channelId, messageId: null, endAt: Date.now() + duration, ended: false };
             const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`giveaway_enter:${giveawayId}`).setLabel("Enter Giveaway").setEmoji("🎉").setStyle(ButtonStyle.Primary));
-            const message = await interaction.channel.send({ content: `# 🎉 GIVEAWAY\\n\\n🎁 **Prize:** ${prize}\\n👤 **Hosted by:** <@${host.id}>\\n🏆 **Winners:** ${winnerCount}\\n⏱️ **Time:** ${giveawayDurationLabel(duration)}\\n👥 **Max entries:** ${maxEntries}\\n\\nClick **Enter Giveaway** below to enter!`, components: [row] });
+            const message = await interaction.channel.send({ content: `# 🎉 GIVEAWAY\\n\\n🎁 **Prize:** ${prize}\\n👤 **Hosted by:** <@${host.id}>\\n🏆 **Winners:** ${winnerCount}\\n⏱️ **Time:** ${giveawayDurationLabel(duration)}\\n👥 **Max entries:** ${maxEntries === 0 ? "Unlimited" : maxEntries}\\n\\nClick **Enter Giveaway** below to enter!`, components: [row] });
             giveaway.messageId = message.id;
             const giveaways = loadGiveaways();
             giveaways[giveawayId] = giveaway;
