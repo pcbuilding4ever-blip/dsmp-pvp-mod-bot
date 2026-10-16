@@ -477,7 +477,7 @@ client.once("ready", async () => {
     }
 
     try {
-        await levelingSystem.initLevelingDatabase();
+        await levelingSystem.initLevelingDatabase(client);
         console.log("✅ Leveling database ready!");
     } catch (error) {
         console.error("❌ Leveling database setup failed:", error.message);
