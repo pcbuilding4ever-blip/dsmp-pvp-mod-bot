@@ -54,11 +54,8 @@ function levelFromXp(xp) {
 const LEVEL_ROLES = [
     { level: 5, roleId: "1553787134798856283" },
     { level: 10, roleId: "1553787239677304993" },
-    { level: 20, roleId: "" },
-    { level: 30, roleId: "" },
-    { level: 50, roleId: "" },
-    { level: 75, roleId: "" },
-    { level: 100, roleId: "" }
+    { level: 25, roleId: "1553787307679555777" },
+    { level: 50, roleId: "1553787388223037521" }
 ];
 
 // Roles are matched by their exact names so server staff can create them in Discord
