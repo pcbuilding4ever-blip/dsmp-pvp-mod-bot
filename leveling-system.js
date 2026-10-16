@@ -99,7 +99,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("leaderboard")
         .setDescription("Show the server's top 10 chat levels")
-].map(command => command.toJSON());
+];
 
 async function handleInteraction(interaction) {
     if (!interaction.isChatInputCommand()) return false;
