@@ -114,7 +114,7 @@ async function buildLeaderboardEmbed(client, guildId) {
     }));
     return new EmbedBuilder()
         .setColor(0x7c3aed)
-        .setTitle("🏆 DSMP PvP Level Leaderboard")
+        .setTitle("🏆 AnchorFall Level Leaderboard")
         .setDescription(lines.length ? lines.join("\n") : "No one has earned XP yet. Start chatting to get on the leaderboard!")
         .setFooter({ text: relativeRefreshFooter() });
 }
@@ -171,7 +171,7 @@ async function awardMessageXp(message) {
                 console.error("[Leveling] Role reward processing failed:", error.message);
             }
             await message.channel.send({
-                content: `🚨 AYOOO LEVEL UP! 🚨 🔥 <@${message.author.id}> just hit **Level ${calculated.level}**! 💀 Bro is actually grinding DSMP PvP 💎 Keep going — the grind never stops.${roleRewardText}`,
+                content: `🚨 AYOOO LEVEL UP! 🚨 🔥 <@${message.author.id}> just hit **Level ${calculated.level}**! 💀 Bro is actually grinding AnchorFall 💎 Keep going — the grind never stops.${roleRewardText}`,
                 allowedMentions: { users: [message.author.id] }
             }).catch(() => {});
         } else if (calculated.level !== row.level) {
@@ -214,7 +214,7 @@ async function handleInteraction(interaction) {
             const bar = "▰".repeat(filled) + "▱".repeat(10 - filled);
             const embed = new EmbedBuilder()
                 .setColor(0x7c3aed)
-                .setTitle(`💎 ${user.username}'s DSMP PvP Rank`)
+                .setTitle(`💎 ${user.username}'s AnchorFall Rank`)
                 .setThumbnail(user.displayAvatarURL())
                 .addFields(
                     { name: "Level", value: String(progress.level), inline: true },
