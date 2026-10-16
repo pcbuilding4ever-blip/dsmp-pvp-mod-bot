@@ -99,7 +99,7 @@ async function grantLevelRoles(member, level) {
 }
 
 function relativeRefreshFooter() {
-    return "Refreshed <t:" + Math.floor(Date.now() / 1000) + ":R>";
+    return "Last refreshed: " + new Date().toLocaleString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) + " UTC";
 }
 
 async function buildLeaderboardEmbed(client, guildId) {
