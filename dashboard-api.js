@@ -265,7 +265,7 @@ function startDashboardApi(client) {
         if (req.method === "GET" && url.pathname === "/api/commands") {
             let saved = {};
             try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
-            return sendJson(res, 200, { ok: true, commands: commandNames.map(name => ({ name, enabled: saved[name]?.enabled !== false, channelId: saved[name]?.channelId || "" })) });
+            return sendJson(res, 200, { ok: true, commands: commandNames.map(name => ({ name, enabled: saved[name]?.enabled !== false, channelId: saved[name]?.channelId || "", settings: saved[name]?.settings || {} })) });
         }
         if (req.method === "POST" && url.pathname === "/api/commands/settings") {
             let input;
@@ -281,8 +281,13 @@ function startDashboardApi(client) {
                 if (input.enabled !== undefined && typeof input.enabled !== "boolean") return sendJson(res, 400, { ok: false, error: "invalid_enabled_value" });
                 if (input.channelId !== undefined && typeof input.channelId !== "string") return sendJson(res, 400, { ok: false, error: "invalid_channel_id" });
                 const channelId = input.channelId === undefined ? (previous.channelId || "") : input.channelId.trim();
+                if (input.settings !== undefined && (!input.settings || typeof input.settings !== "object" || Array.isArray(input.settings))) return sendJson(res, 400, { ok: false, error: "invalid_command_settings" });
+                const settings = input.settings === undefined ? (previous.settings || {}) : input.settings;
+                for (const [key, value] of Object.entries(settings)) {
+                    if (!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) || !["string","number","boolean"].includes(typeof value) || (typeof value === "string" && value.length > 1000) || (typeof value === "number" && !Number.isFinite(value))) return sendJson(res, 400, { ok: false, error: "invalid_command_setting_value" });
+                }
                 if (channelId && !/^\d{17,20}$/.test(channelId)) return sendJson(res, 400, { ok: false, error: "invalid_channel_id" });
-                saved[input.name] = { enabled: input.enabled === undefined ? previous.enabled !== false : input.enabled, channelId };
+                saved[input.name] = { enabled: input.enabled === undefined ? previous.enabled !== false : input.enabled, channelId, settings };
             }
             try {
                 const temp = "./command-settings.json.tmp";
