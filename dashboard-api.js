@@ -104,7 +104,7 @@ function startDashboardApi(client) {
             try { input = await readJson(req); } catch (e) { return sendJson(res, e.message === "body_too_large" ? 413 : 400, { error: e.message }); }
             const id = typeof input.id === "string" ? input.id : "";
             const action = input.action;
-            if (!/^\d{1,30}$/.test(id) || !["end", "redraw"].includes(action)) return sendJson(res, 400, { error: "invalid_giveaway_action" });
+            if (!/^[a-z0-9-]{5,80}$/i.test(id) || !["end", "redraw"].includes(action)) return sendJson(res, 400, { error: "invalid_giveaway_action" });
             let all;
             try { all = JSON.parse(fs.readFileSync("./giveaways.json", "utf8")); } catch { return sendJson(res, 500, { error: "giveaways_unavailable" }); }
             const g = all[id];
