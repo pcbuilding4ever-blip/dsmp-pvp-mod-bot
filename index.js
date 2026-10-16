@@ -23,6 +23,7 @@ const spawnerPrices = require("./spawner-prices");
 const { startDashboardApi } = require("./dashboard-api");
 const schematicLibrary = require("./schematic-library");
 const schematicStorage = require("./schematic-storage");
+const levelingSystem = require("./leveling-system");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
 const RULES_CHANNEL_ID = "1550441311621095495";
@@ -458,7 +459,8 @@ new SlashCommandBuilder()
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     ...vouchSystem.commands,
-    ...spawnerPrices.commands
+    ...spawnerPrices.commands,
+    ...levelingSystem.commands
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: "10" })
@@ -472,6 +474,13 @@ client.once("ready", async () => {
         console.log("✅ Vouch database ready!");
     } catch (error) {
         console.error("❌ Vouch database setup failed:", error.message);
+    }
+
+    try {
+        await levelingSystem.initLevelingDatabase();
+        console.log("✅ Leveling database ready!");
+    } catch (error) {
+        console.error("❌ Leveling database setup failed:", error.message);
     }
 
     const activeGiveaways = loadGiveaways();
@@ -555,6 +564,7 @@ client.on("interactionCreate", async interaction => {
     try {
         if (await spawnerPrices.handleInteraction(interaction)) return;
         if (await vouchSystem.handleVouchInteraction(interaction)) return;
+        if (await levelingSystem.handleInteraction(interaction)) return;
         if (interaction.isStringSelectMenu()) {
             if (interaction.customId === "schematic_category") {
                 const builds = await schematicLibrary.listPublished(Number(interaction.values[0]));
@@ -1987,6 +1997,7 @@ if (interaction.commandName === "stats") {
 
 client.on("messageCreate", async message => {
     if (!message.guild || message.author.bot) return;
+    levelingSystem.awardMessageXp(message).catch(error => console.error("Leveling message handler failed:", error.message));
     const now = Date.now();
     const history = spamTracker.get(message.author.id) || [];
     const recent = history.filter(t => now - t < 8000);
