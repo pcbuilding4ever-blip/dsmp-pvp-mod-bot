@@ -154,6 +154,8 @@ async function finishGiveaway(giveawayId) {
     const giveaways = loadGiveaways();
     const giveaway = giveaways[giveawayId];
     if (!giveaway || giveaway.ended) return;
+    // Dashboard edits can move the deadline after this timer was first scheduled.
+    if (Number(giveaway.endAt) > Date.now()) { scheduleGiveaway(giveaway); return; }
     giveaway.ended = true;
     const entrants = [...new Set(giveaway.entries || [])];
     entrants.sort(() => Math.random() - 0.5);
