@@ -44,7 +44,7 @@ async function initVouchDatabase() {
 const commands = [
     new SlashCommandBuilder()
         .setName("vouchpanel")
-        .setDescription("Post the DSMP PvP vouch panels")
+        .setDescription("Post the AnchorFall vouch panels")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
     new SlashCommandBuilder()
         .setName("vouchreview")
@@ -101,7 +101,7 @@ function makePanel(type) {
     const scam = type === "scam";
     const embed = new EmbedBuilder()
         .setColor(scam ? 0xED4245 : 0x57F287)
-        .setTitle(scam ? "🚨 DSMP PvP — Scam Vouches" : "🤝 DSMP PvP — Player Vouches")
+        .setTitle(scam ? "🚨 AnchorFall — Scam Vouches" : "🤝 AnchorFall — Player Vouches")
         .setDescription(scam
             ? "Submit a genuine scam-related allegation or view a member's trust profile. Scam vouches affect trust immediately. False or misleading submissions may be removed by staff."
             : "Vouch for a player you have genuinely traded or worked with, or view a member's trust profile and vouch history.")
@@ -152,7 +152,7 @@ async function showProfile(interaction, targetId, page, edit) {
     );
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle("🛡️ DSMP PvP — Trust Profile")
+        .setTitle("🛡️ AnchorFall — Trust Profile")
         .setDescription("Member: <@" + targetId + ">\nTrust score: **" + trust + "**")
         .addFields(
             { name: "Normal vouches", value: String(counts.normal), inline: true },
@@ -389,7 +389,7 @@ async function handleVouchInteraction(interaction) {
         }
         try {
             const target = await interaction.client.users.fetch(lookup.rows[0].target_id);
-            await target.send("An update on your flagged vouch: it has been " + decision + " by the DSMP PvP staff team.");
+            await target.send("An update on your flagged vouch: it has been " + decision + " by the AnchorFall staff team.");
         } catch (notifyError) {
             console.warn("Could not DM vouch review decision:", notifyError.message);
         }
