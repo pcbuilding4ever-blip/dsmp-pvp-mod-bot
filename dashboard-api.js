@@ -262,7 +262,28 @@ function startDashboardApi(client) {
             }
         }
         if (req.method === "GET" && url.pathname === "/api/commands") {
-            return sendJson(res, 200, { ok: true, commands: ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"] });
+            const commandNames = ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"];
+            let saved = {};
+            try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
+            return sendJson(res, 200, { ok: true, commands: commandNames.map(name => ({ name, enabled: saved[name]?.enabled !== false })) });
+        }
+        if (req.method === "POST" && url.pathname === "/api/commands/settings") {
+            let input;
+            try { input = await readJson(req, 2000); } catch (error) { return sendJson(res, 400, { ok: false, error: error.message }); }
+            const allowed = new Set(["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"]);
+            if (!input || typeof input.name !== "string" || !allowed.has(input.name) || typeof input.enabled !== "boolean") return sendJson(res, 400, { ok: false, error: "invalid_command_setting" });
+            let saved = {};
+            try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
+            saved[input.name] = { enabled: input.enabled };
+            try {
+                const temp = "./command-settings.json.tmp";
+                fs.writeFileSync(temp, JSON.stringify(saved, null, 2), { mode: 0o600 });
+                fs.renameSync(temp, "./command-settings.json");
+                return sendJson(res, 200, { ok: true, name: input.name, enabled: input.enabled, message: "/" + input.name + (input.enabled ? " enabled." : " disabled.") });
+            } catch (error) {
+                console.error("[Dashboard API] Command settings save failed:", error.message);
+                return sendJson(res, 500, { ok: false, error: "command_settings_save_failed" });
+            }
         }
         if (req.method === "GET" && url.pathname === "/api/tickets") {
             const parentId = "1553777212170178570";
