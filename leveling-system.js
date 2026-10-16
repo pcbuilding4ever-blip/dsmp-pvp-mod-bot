@@ -51,6 +51,39 @@ function levelFromXp(xp) {
     return { level, progressXp: remaining, nextLevelXp: xpForLevel(level) };
 }
 
+const LEVEL_ROLES = [
+    { level: 5, name: "🌱 Level 5" },
+    { level: 10, name: "⚔️ Level 10" },
+    { level: 20, name: "🔥 Level 20" },
+    { level: 30, name: "💎 Level 30" },
+    { level: 50, name: "👑 Level 50" },
+    { level: 75, name: "🏆 Level 75" },
+    { level: 100, name: "💠 Level 100" }
+];
+
+// Roles are matched by their exact names so server staff can create them in Discord
+// without needing to add role IDs to Railway environment variables.
+async function grantLevelRoles(member, level) {
+    if (!member || !member.guild) return [];
+    const earned = LEVEL_ROLES.filter(reward => reward.level <= level);
+    const granted = [];
+    for (const reward of earned) {
+        const role = member.guild.roles.cache.find(candidate => candidate.name === reward.name);
+        if (!role || member.roles.cache.has(role.id)) continue;
+        if (role.managed || !role.editable) {
+            console.warn(`[Leveling] Cannot assign role "${reward.name}" - check the bot's role hierarchy and permissions.`);
+            continue;
+        }
+        try {
+            await member.roles.add(role, `Reached chat level ${reward.level}`);
+            granted.push(reward.name);
+        } catch (error) {
+            console.error(`[Leveling] Could not assign "${reward.name}" to ${member.id}:`, error.message);
+        }
+    }
+    return granted;
+}
+
 async function awardMessageXp(message) {
     if (!message.guild || message.author.bot || !message.content.trim()) return;
     const key = `${message.guild.id}:${message.author.id}`;
@@ -76,8 +109,16 @@ async function awardMessageXp(message) {
                 "UPDATE leveling_xp SET level = $3 WHERE guild_id = $1 AND user_id = $2",
                 [message.guild.id, message.author.id, calculated.level]
             );
+            let roleRewardText = "";
+            try {
+                const member = message.member || await message.guild.members.fetch(message.author.id);
+                const grantedRoles = await grantLevelRoles(member, calculated.level);
+                if (grantedRoles.length) roleRewardText = `\\n🎭 **New level role(s):** ${grantedRoles.join(", ")}`;
+            } catch (error) {
+                console.error("[Leveling] Role reward processing failed:", error.message);
+            }
             await message.channel.send({
-                content: `🎉 <@${message.author.id}> leveled up to **Level ${calculated.level}**! Keep chatting!`,
+                content: `🚨 AYOOO LEVEL UP! 🚨 🔥 <@${message.author.id}> just hit **Level ${calculated.level}**! 💀 Bro is actually grinding DSMP PvP 💎 Keep going — the grind never stops.${roleRewardText}`,
                 allowedMentions: { users: [message.author.id] }
             }).catch(() => {});
         } else if (calculated.level !== row.level) {
