@@ -1240,6 +1240,16 @@ client.on("interactionCreate", async interaction => {
 
         if (!interaction.isChatInputCommand()) return;
 
+        try {
+            const commandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8"));
+            if (commandSettings[interaction.commandName]?.enabled === false) {
+                await interaction.reply({ content: "This command is currently disabled by an administrator.", ephemeral: true });
+                return;
+            }
+        } catch (error) {
+            if (error.code !== "ENOENT") console.warn("[Command settings] Could not read settings:", error.message);
+        }
+
         if (interaction.commandName === "ping") {
             await interaction.reply("🏓 Pong!");
             return;
