@@ -246,10 +246,10 @@ async function handleInteraction(interaction) {
                 if (missingAnyEligibleRole) failed++;
             }
             await interaction.editReply(
-                "🎭 **Level role sync complete.**\\n" +
-                "Members checked: **" + checked + "**\\n" +
-                "Roles newly granted: **" + granted + "**\\n" +
-                "Members still missing eligible roles: **" + failed + "**\\n\\n" +
+                "🎭 **Level role sync complete.**\n" +
+                "Members checked: **" + checked + "**\n" +
+                "Roles newly granted: **" + granted + "**\n" +
+                "Members still missing eligible roles: **" + failed + "**\n\n" +
                 (failed ? "Check that the bot has **Manage Roles** and its highest role is above all four reward roles." : "All available earned role rewards are synced.")
             );
             return true;
