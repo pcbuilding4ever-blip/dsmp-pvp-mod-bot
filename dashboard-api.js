@@ -301,7 +301,7 @@ function startDashboardApi(client) {
                 if (pool) await pool.end().catch(() => {});
             }
         }
-        const commandNames = ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview"];
+        const commandNames = ["ping","rules","serverinfo","giveawayinfo","warnings","warn","kick","ban","timeout","userinfo","unwarn","unban","untimeout","settings","announce","stats","report","purge","lock","unlock","slowmode","ticketpanel","schematic","game","giveaway","spawnerprices","editstock","vouchpanel","vouchreview","levelroles"];
         if (req.method === "GET" && url.pathname === "/api/commands") {
             let saved = {};
             try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
