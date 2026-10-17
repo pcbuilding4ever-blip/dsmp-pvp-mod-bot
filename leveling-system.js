@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const fs = require("node:fs");
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 
 let pool;
@@ -63,18 +64,28 @@ function levelFromXp(xp) {
     return { level, progressXp: remaining, nextLevelXp: xpForLevel(level) };
 }
 
-const LEVEL_ROLES = [
-    { level: 5, roleId: "1553787134798856283" },
-    { level: 10, roleId: "1553787239677304993" },
-    { level: 25, roleId: "1553787307679555777" },
-    { level: 50, roleId: "1553787388223037521" }
+const DEFAULT_LEVEL_ROLES = [
+    { level: 5, roleId: "1553787134798856283", settingKey: "level5RoleId" },
+    { level: 10, roleId: "1553787239677304993", settingKey: "level10RoleId" },
+    { level: 25, roleId: "1553787307679555777", settingKey: "level25RoleId" },
+    { level: 50, roleId: "1553787388223037521", settingKey: "level50RoleId" }
 ];
+
+function getLevelRoles() {
+    let saved = {};
+    try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
+    const settings = saved.levelroles?.settings || {};
+    return DEFAULT_LEVEL_ROLES.map(reward => ({
+        level: reward.level,
+        roleId: /^\\d{17,20}$/.test(String(settings[reward.settingKey] || "")) ? String(settings[reward.settingKey]) : reward.roleId
+    }));
+}
 
 // Roles are matched by their exact names so server staff can create them in Discord
 // without needing to add role IDs to Railway environment variables.
 async function grantLevelRoles(member, level) {
     if (!member || !member.guild) return [];
-    const earned = LEVEL_ROLES.filter(reward => reward.level <= level);
+    const earned = getLevelRoles().filter(reward => reward.level <= level);
     const granted = [];
     for (const reward of earned) {
         if (!reward.roleId) continue;
@@ -229,7 +240,7 @@ async function handleInteraction(interaction) {
                 const progress = levelFromXp(row.xp);
                 const roles = await grantLevelRoles(member, progress.level);
                 granted += roles.length;
-                const missingAnyEligibleRole = LEVEL_ROLES.some(reward =>
+                const missingAnyEligibleRole = getLevelRoles().some(reward =>
                     reward.level <= progress.level && !member.roles.cache.has(reward.roleId)
                 );
                 if (missingAnyEligibleRole) failed++;
