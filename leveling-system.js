@@ -77,7 +77,7 @@ function getLevelRoles() {
     const settings = saved.levelroles?.settings || {};
     return DEFAULT_LEVEL_ROLES.map(reward => ({
         level: reward.level,
-        roleId: /^\\d{17,20}$/.test(String(settings[reward.settingKey] || "")) ? String(settings[reward.settingKey]) : reward.roleId
+        roleId: /^\d{17,20}$/.test(String(settings[reward.settingKey] || "")) ? String(settings[reward.settingKey]) : reward.roleId
     }));
 }
 
