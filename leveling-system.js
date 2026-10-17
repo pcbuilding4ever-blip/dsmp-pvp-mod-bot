@@ -1,5 +1,6 @@
 const { Pool } = require("pg");
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const fs = require("node:fs");
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 
 let pool;
 let leaderboardRefreshTimer;
@@ -63,18 +64,28 @@ function levelFromXp(xp) {
     return { level, progressXp: remaining, nextLevelXp: xpForLevel(level) };
 }
 
-const LEVEL_ROLES = [
-    { level: 5, roleId: "1553787134798856283" },
-    { level: 10, roleId: "1553787239677304993" },
-    { level: 25, roleId: "1553787307679555777" },
-    { level: 50, roleId: "1553787388223037521" }
+const DEFAULT_LEVEL_ROLES = [
+    { level: 5, roleId: "1553787134798856283", settingKey: "level5RoleId" },
+    { level: 10, roleId: "1553787239677304993", settingKey: "level10RoleId" },
+    { level: 25, roleId: "1553787307679555777", settingKey: "level25RoleId" },
+    { level: 50, roleId: "1553787388223037521", settingKey: "level50RoleId" }
 ];
+
+function getLevelRoles() {
+    let saved = {};
+    try { saved = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
+    const settings = saved.levelroles?.settings || {};
+    return DEFAULT_LEVEL_ROLES.map(reward => ({
+        level: reward.level,
+        roleId: /^\d{17,20}$/.test(String(settings[reward.settingKey] || "")) ? String(settings[reward.settingKey]) : reward.roleId
+    }));
+}
 
 // Roles are matched by their exact names so server staff can create them in Discord
 // without needing to add role IDs to Railway environment variables.
 async function grantLevelRoles(member, level) {
     if (!member || !member.guild) return [];
-    const earned = LEVEL_ROLES.filter(reward => reward.level <= level);
+    const earned = getLevelRoles().filter(reward => reward.level <= level);
     const granted = [];
     for (const reward of earned) {
         if (!reward.roleId) continue;
@@ -157,28 +168,31 @@ async function awardMessageXp(message) {
         );
         const row = result.rows[0];
         const calculated = levelFromXp(row.xp);
-        if (calculated.level > row.level) {
+        const levelIncreased = calculated.level > row.level;
+        if (calculated.level !== row.level) {
             await db.query(
                 "UPDATE leveling_xp SET level = $3 WHERE guild_id = $1 AND user_id = $2",
                 [message.guild.id, message.author.id, calculated.level]
             );
-            let roleRewardText = "";
-            try {
-                const member = message.member || await message.guild.members.fetch(message.author.id);
-                const grantedRoles = await grantLevelRoles(member, calculated.level);
-                if (grantedRoles.length) roleRewardText = `\\n🎭 **New level role(s):** ${grantedRoles.join(", ")}`;
-            } catch (error) {
-                console.error("[Leveling] Role reward processing failed:", error.message);
-            }
+        }
+
+        // Re-check milestone roles on every eligible message, not only on level-ups.
+        // This lets members catch up if the bot was missing permissions or a role
+        // was temporarily above the bot in the hierarchy.
+        let roleRewardText = "";
+        try {
+            const member = message.member || await message.guild.members.fetch(message.author.id);
+            const grantedRoles = await grantLevelRoles(member, calculated.level);
+            if (grantedRoles.length) roleRewardText = `\\n🎭 **New level role(s):** ${grantedRoles.join(", ")}`;
+        } catch (error) {
+            console.error("[Leveling] Role reward processing failed:", error.message);
+        }
+
+        if (levelIncreased) {
             await message.channel.send({
                 content: `🚨 AYOOO LEVEL UP! 🚨 🔥 <@${message.author.id}> just hit **Level ${calculated.level}**! 💀 Bro is actually grinding AnchorFall 💎 Keep going — the grind never stops.${roleRewardText}`,
                 allowedMentions: { users: [message.author.id] }
             }).catch(() => {});
-        } else if (calculated.level !== row.level) {
-            await db.query(
-                "UPDATE leveling_xp SET level = $3 WHERE guild_id = $1 AND user_id = $2",
-                [message.guild.id, message.author.id, calculated.level]
-            );
         }
     } catch (error) {
         console.error("Leveling XP award failed:", error.message);
@@ -192,15 +206,55 @@ const commands = [
         .addUserOption(option => option.setName("user").setDescription("Member to check").setRequired(false)),
     new SlashCommandBuilder()
         .setName("leaderboard")
-        .setDescription("Show the server's top 10 chat levels")
+        .setDescription("Show the server's top 10 chat levels"),
+    new SlashCommandBuilder()
+        .setName("levelroles")
+        .setDescription("Sync earned level reward roles for server members")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
 ];
 
 async function handleInteraction(interaction) {
     if (!interaction.isChatInputCommand()) return false;
-    if (!["rank", "leaderboard"].includes(interaction.commandName)) return false;
+    if (!["rank", "leaderboard", "levelroles"].includes(interaction.commandName)) return false;
 
     try {
         await initLevelingDatabase(interaction.client);
+        if (interaction.commandName === "levelroles") {
+            if (!interaction.guild) {
+                await interaction.reply({ content: "Run this command inside your server.", ephemeral: true });
+                return true;
+            }
+            await interaction.deferReply({ ephemeral: true });
+            const db = await getPool().query(
+                "SELECT user_id, xp FROM leveling_xp WHERE guild_id = $1 AND xp > 0 ORDER BY xp DESC",
+                [interaction.guildId]
+            );
+            await interaction.guild.members.fetch();
+            let checked = 0;
+            let granted = 0;
+            let failed = 0;
+            for (const row of db.rows) {
+                const member = interaction.guild.members.cache.get(row.user_id);
+                if (!member || member.user.bot) continue;
+                checked++;
+                const progress = levelFromXp(row.xp);
+                const roles = await grantLevelRoles(member, progress.level);
+                granted += roles.length;
+                const missingAnyEligibleRole = getLevelRoles().some(reward =>
+                    reward.level <= progress.level && !member.roles.cache.has(reward.roleId)
+                );
+                if (missingAnyEligibleRole) failed++;
+            }
+            await interaction.editReply(
+                "🎭 **Level role sync complete.**\\n" +
+                "Members checked: **" + checked + "**\\n" +
+                "Roles newly granted: **" + granted + "**\\n" +
+                "Members still missing eligible roles: **" + failed + "**\\n\\n" +
+                (failed ? "Check that the bot has **Manage Roles** and its highest role is above all four reward roles." : "All available earned role rewards are synced.")
+            );
+            return true;
+        }
+
         if (interaction.commandName === "rank") {
             const user = interaction.options.getUser("user") || interaction.user;
             const result = await getPool().query(
