@@ -157,28 +157,31 @@ async function awardMessageXp(message) {
         );
         const row = result.rows[0];
         const calculated = levelFromXp(row.xp);
-        if (calculated.level > row.level) {
+        const levelIncreased = calculated.level > row.level;
+        if (calculated.level !== row.level) {
             await db.query(
                 "UPDATE leveling_xp SET level = $3 WHERE guild_id = $1 AND user_id = $2",
                 [message.guild.id, message.author.id, calculated.level]
             );
-            let roleRewardText = "";
-            try {
-                const member = message.member || await message.guild.members.fetch(message.author.id);
-                const grantedRoles = await grantLevelRoles(member, calculated.level);
-                if (grantedRoles.length) roleRewardText = `\\n🎭 **New level role(s):** ${grantedRoles.join(", ")}`;
-            } catch (error) {
-                console.error("[Leveling] Role reward processing failed:", error.message);
-            }
+        }
+
+        // Re-check milestone roles on every eligible message, not only on level-ups.
+        // This lets members catch up if the bot was missing permissions or a role
+        // was temporarily above the bot in the hierarchy.
+        let roleRewardText = "";
+        try {
+            const member = message.member || await message.guild.members.fetch(message.author.id);
+            const grantedRoles = await grantLevelRoles(member, calculated.level);
+            if (grantedRoles.length) roleRewardText = `\\n🎭 **New level role(s):** ${grantedRoles.join(", ")}`;
+        } catch (error) {
+            console.error("[Leveling] Role reward processing failed:", error.message);
+        }
+
+        if (levelIncreased) {
             await message.channel.send({
                 content: `🚨 AYOOO LEVEL UP! 🚨 🔥 <@${message.author.id}> just hit **Level ${calculated.level}**! 💀 Bro is actually grinding AnchorFall 💎 Keep going — the grind never stops.${roleRewardText}`,
                 allowedMentions: { users: [message.author.id] }
             }).catch(() => {});
-        } else if (calculated.level !== row.level) {
-            await db.query(
-                "UPDATE leveling_xp SET level = $3 WHERE guild_id = $1 AND user_id = $2",
-                [message.guild.id, message.author.id, calculated.level]
-            );
         }
     } catch (error) {
         console.error("Leveling XP award failed:", error.message);
