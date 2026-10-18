@@ -95,6 +95,24 @@ const channel = settings.logChannelId
     }
 }
 
+async function sendCommandLog(guild, commandName, message) {
+    try {
+        let commandSettings = {};
+        try { commandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
+        const channelId = commandSettings[commandName]?.settings?.logChannelId;
+        const channel = channelId
+            ? await guild.channels.fetch(channelId).catch(() => null)
+            : null;
+        if (channel && channel.isTextBased()) {
+            await channel.send({ content: message });
+        } else {
+            await sendModLog(guild, message);
+        }
+    } catch (error) {
+        console.error("[Command log] Failed:", error.message);
+    }
+}
+
 function formatMember(member) {
     return `**User:** <@${member.id}> (${member.user.tag})\\n**ID:** ${member.id}\\n**Joined:** ${member.joinedAt ? member.joinedAt.toISOString() : "Unknown"}`;
 }
@@ -312,8 +330,8 @@ new SlashCommandBuilder()
     .addIntegerOption(option =>
         option
             .setName("minutes")
-            .setDescription("Timeout duration in minutes")
-            .setRequired(true)
+            .setDescription("Timeout duration in minutes (uses dashboard default if omitted)")
+            .setRequired(false)
             .setMinValue(1)
             .setMaxValue(40320)
     )
@@ -1242,14 +1260,30 @@ client.on("interactionCreate", async interaction => {
 
         if (!interaction.isChatInputCommand()) return;
 
+        let allCommandSettings = {};
         try {
-            const commandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8"));
-            if (commandSettings[interaction.commandName]?.enabled === false) {
+            allCommandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8"));
+            if (allCommandSettings[interaction.commandName]?.enabled === false) {
                 await interaction.reply({ content: "This command is currently disabled by an administrator.", ephemeral: true });
                 return;
             }
         } catch (error) {
             if (error.code !== "ENOENT") console.warn("[Command settings] Could not read settings:", error.message);
+        }
+
+        const moderationCommands = new Set([
+            "warn", "warnings", "unwarn", "kick", "ban", "unban", "timeout",
+            "untimeout", "purge", "lock", "unlock", "slowmode"
+        ]);
+        const activeCommandSettings = allCommandSettings[interaction.commandName] || {};
+        const requiredStaffRoleId = activeCommandSettings.settings?.staffRoleId;
+        if (moderationCommands.has(interaction.commandName) && requiredStaffRoleId) {
+            const hasStaffRole = interaction.member?.roles?.cache?.has(requiredStaffRoleId);
+            const isGuildOwner = interaction.guild?.ownerId === interaction.user.id;
+            if (!hasStaffRole && !isGuildOwner) {
+                await interaction.reply({ content: "⛔ You need the staff role configured for this command to use it.", ephemeral: true });
+                return;
+            }
         }
 
         if (interaction.commandName === "ping") {
@@ -1603,6 +1637,7 @@ if (interaction.commandName === "kick") {
     }
 
     await member.kick(reason);
+    await sendCommandLog(interaction.guild, "kick", `👢 ${user.tag} was kicked by <@${interaction.user.id}>. Reason: ${reason}`);
 
     await interaction.reply(
         `👢 **${user.tag}** has been kicked.\n**Reason:** ${reason}`
@@ -1624,6 +1659,7 @@ if (interaction.commandName === "ban") {
     }
 
     await interaction.guild.members.ban(user.id, { reason });
+    await sendCommandLog(interaction.guild, "ban", `🔨 ${user.tag} was banned by <@${interaction.user.id}>. Reason: ${reason}`);
 
     await interaction.reply(
         `🔨 **${user.tag}** has been banned.\n**Reason:** ${reason}`
@@ -1633,7 +1669,10 @@ if (interaction.commandName === "ban") {
 
 if (interaction.commandName === "timeout") {
     const user = interaction.options.getUser("user");
-    const minutes = interaction.options.getInteger("minutes");
+    const timeoutSettings = allCommandSettings.timeout?.settings || {};
+    const requestedMinutes = interaction.options.getInteger("minutes");
+    const configuredDefault = Number(timeoutSettings.defaultMinutes);
+    const minutes = requestedMinutes ?? (Number.isFinite(configuredDefault) && configuredDefault > 0 ? Math.min(40320, Math.floor(configuredDefault)) : 10);
     const reason = interaction.options.getString("reason");
     const member = await interaction.guild.members.fetch(user.id);
 
@@ -1646,6 +1685,7 @@ if (interaction.commandName === "timeout") {
     }
 
     await member.timeout(minutes * 60 * 1000, reason);
+    await sendCommandLog(interaction.guild, "timeout", `⏱️ ${user.tag} was timed out for ${minutes} minute(s) by <@${interaction.user.id}>. Reason: ${reason}`);
 
     await interaction.reply(
         `⏱️ **${user.tag}** has been timed out for **${minutes} minute(s)**.\n**Reason:** ${reason}`
@@ -1676,7 +1716,7 @@ if (interaction.commandName === "timeout") {
             const removed = list.splice(number - 1, 1)[0];
             warnings[user.id] = list;
             saveWarnings(warnings);
-            await sendModLog(interaction.guild, `🧹 **Warning removed**\\n**User:** <@${user.id}>\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${removed.reason}`);
+            await sendCommandLog(interaction.guild, "unwarn", `🧹 Warning #${number} removed from ${user.tag} by <@${interaction.user.id}>. Reason: ${removed.reason}`);
             await interaction.reply(`✅ Removed warning **#${number}** from **${user.tag}**.`);
             return;
         }
@@ -1685,7 +1725,7 @@ if (interaction.commandName === "timeout") {
             const userId = interaction.options.getString("user_id").trim();
             const reason = interaction.options.getString("reason");
             await interaction.guild.members.unban(userId, reason);
-            await sendModLog(interaction.guild, `🔓 **Unban**\\n**User ID:** ${userId}\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${reason}`);
+            await sendCommandLog(interaction.guild, "unban", `🔓 User ID ${userId} unbanned by <@${interaction.user.id}>. Reason: ${reason}`);
             await interaction.reply(`🔓 **${userId}** has been unbanned.`);
             return;
         }
@@ -1699,7 +1739,7 @@ if (interaction.commandName === "timeout") {
                 return;
             }
             await member.timeout(null, reason);
-            await sendModLog(interaction.guild, `🔓 **Timeout removed**\\n**User:** <@${user.id}>\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${reason}`);
+            await sendCommandLog(interaction.guild, "untimeout", `🔓 Timeout removed for ${user.tag} by <@${interaction.user.id}>. Reason: ${reason}`);
             await interaction.reply(`🔓 **${user.tag}** is no longer timed out.`);
             return;
         }
@@ -1829,13 +1869,19 @@ if (interaction.commandName === "stats") {
         }
 
         if (interaction.commandName === "purge") {
-            const amount = interaction.options.getInteger("amount");
-
+            const requestedAmount = interaction.options.getInteger("amount");
+            const purgeSettings = allCommandSettings.purge?.settings || {};
+            const configuredMaximum = Number(purgeSettings.maxMessages);
+            const maximum = Number.isFinite(configuredMaximum) && configuredMaximum > 0 ? Math.min(100, Math.floor(configuredMaximum)) : 100;
+            const amount = Math.min(requestedAmount, maximum);
             try {
                 const deleted = await interaction.channel.bulkDelete(amount, true);
+                await sendCommandLog(interaction.guild, "purge", `🧹 <@${interaction.user.id}> purged ${deleted.size} message(s) in <#${interaction.channelId}>.`);
 
                 await interaction.reply({
-                    content: `🧹 Deleted **${deleted.size}** message(s).`,
+                    content: amount < requestedAmount
+                        ? `⚠️ Dashboard limit: ${maximum} messages. Deleted **${deleted.size}** message(s).`
+                        : `🧹 Deleted **${deleted.size}** message(s).`,
                     ephemeral: true
                 });
             } catch (error) {
@@ -1855,6 +1901,7 @@ if (interaction.commandName === "stats") {
                     interaction.guild.roles.everyone,
                     { SendMessages: false }
                 );
+                await sendCommandLog(interaction.guild, "lock", `🔒 Channel <#${interaction.channelId}> locked by <@${interaction.user.id}>.`);
                 await interaction.reply("🔒 **Channel locked.**");
             } catch (error) {
                 console.error("❌ Lock failed:", error);
@@ -1872,6 +1919,7 @@ if (interaction.commandName === "stats") {
                     interaction.guild.roles.everyone,
                     { SendMessages: true }
                 );
+                await sendCommandLog(interaction.guild, "unlock", `🔓 Channel <#${interaction.channelId}> unlocked by <@${interaction.user.id}>.`);
                 await interaction.reply("🔓 **Channel unlocked.**");
             } catch (error) {
                 console.error("❌ Unlock failed:", error);
@@ -1888,6 +1936,7 @@ if (interaction.commandName === "stats") {
 
             try {
                 await interaction.channel.setRateLimitPerUser(seconds);
+                await sendCommandLog(interaction.guild, "slowmode", `🐌 Slowmode set to ${seconds}s in <#${interaction.channelId}> by <@${interaction.user.id}>.`);
 
                 await interaction.reply(
                     seconds === 0
@@ -1925,6 +1974,7 @@ if (interaction.commandName === "stats") {
             });
 
             saveWarnings(warnings);
+            await sendCommandLog(interaction.guild, "warn", `⚠️ <@${user.id}> was warned by <@${interaction.user.id}> (level ${level}). Reason: ${reason}`);
 
             let punishment = "⚠️ Warning only";
 
