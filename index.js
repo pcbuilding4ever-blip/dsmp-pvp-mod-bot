@@ -1716,7 +1716,7 @@ if (interaction.commandName === "timeout") {
             const removed = list.splice(number - 1, 1)[0];
             warnings[user.id] = list;
             saveWarnings(warnings);
-            await sendModLog(interaction.guild, `🧹 **Warning removed**\\n**User:** <@${user.id}>\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${removed.reason}`);
+            await sendCommandLog(interaction.guild, "unwarn", `🧹 Warning #${number} removed from ${user.tag} by <@${interaction.user.id}>. Reason: ${removed.reason}`);
             await interaction.reply(`✅ Removed warning **#${number}** from **${user.tag}**.`);
             return;
         }
@@ -1725,7 +1725,7 @@ if (interaction.commandName === "timeout") {
             const userId = interaction.options.getString("user_id").trim();
             const reason = interaction.options.getString("reason");
             await interaction.guild.members.unban(userId, reason);
-            await sendModLog(interaction.guild, `🔓 **Unban**\\n**User ID:** ${userId}\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${reason}`);
+            await sendCommandLog(interaction.guild, "unban", `🔓 User ID ${userId} unbanned by <@${interaction.user.id}>. Reason: ${reason}`);
             await interaction.reply(`🔓 **${userId}** has been unbanned.`);
             return;
         }
@@ -1739,7 +1739,7 @@ if (interaction.commandName === "timeout") {
                 return;
             }
             await member.timeout(null, reason);
-            await sendModLog(interaction.guild, `🔓 **Timeout removed**\\n**User:** <@${user.id}>\\n**Moderator:** <@${interaction.user.id}>\\n**Reason:** ${reason}`);
+            await sendCommandLog(interaction.guild, "untimeout", `🔓 Timeout removed for ${user.tag} by <@${interaction.user.id}>. Reason: ${reason}`);
             await interaction.reply(`🔓 **${user.tag}** is no longer timed out.`);
             return;
         }
@@ -1901,6 +1901,7 @@ if (interaction.commandName === "stats") {
                     interaction.guild.roles.everyone,
                     { SendMessages: false }
                 );
+                await sendCommandLog(interaction.guild, "lock", `🔒 Channel <#${interaction.channelId}> locked by <@${interaction.user.id}>.`);
                 await interaction.reply("🔒 **Channel locked.**");
             } catch (error) {
                 console.error("❌ Lock failed:", error);
@@ -1918,6 +1919,7 @@ if (interaction.commandName === "stats") {
                     interaction.guild.roles.everyone,
                     { SendMessages: true }
                 );
+                await sendCommandLog(interaction.guild, "unlock", `🔓 Channel <#${interaction.channelId}> unlocked by <@${interaction.user.id}>.`);
                 await interaction.reply("🔓 **Channel unlocked.**");
             } catch (error) {
                 console.error("❌ Unlock failed:", error);
@@ -1934,6 +1936,7 @@ if (interaction.commandName === "stats") {
 
             try {
                 await interaction.channel.setRateLimitPerUser(seconds);
+                await sendCommandLog(interaction.guild, "slowmode", `🐌 Slowmode set to ${seconds}s in <#${interaction.channelId}> by <@${interaction.user.id}>.`);
 
                 await interaction.reply(
                     seconds === 0
