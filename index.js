@@ -1874,16 +1874,14 @@ if (interaction.commandName === "stats") {
             const configuredMaximum = Number(purgeSettings.maxMessages);
             const maximum = Number.isFinite(configuredMaximum) && configuredMaximum > 0 ? Math.min(100, Math.floor(configuredMaximum)) : 100;
             const amount = Math.min(requestedAmount, maximum);
-            if (amount < requestedAmount) {
-                await interaction.reply({ content: `⚠️ The dashboard limit for /purge is **${maximum}** messages. I'll delete ${amount} instead.`, ephemeral: true });
-            }
-
             try {
                 const deleted = await interaction.channel.bulkDelete(amount, true);
                 await sendCommandLog(interaction.guild, "purge", `🧹 <@${interaction.user.id}> purged ${deleted.size} message(s) in <#${interaction.channelId}>.`);
 
                 await interaction.reply({
-                    content: `🧹 Deleted **${deleted.size}** message(s).`,
+                    content: amount < requestedAmount
+                        ? `⚠️ Dashboard limit: ${maximum} messages. Deleted **${deleted.size}** message(s).`
+                        : `🧹 Deleted **${deleted.size}** message(s).`,
                     ephemeral: true
                 });
             } catch (error) {
