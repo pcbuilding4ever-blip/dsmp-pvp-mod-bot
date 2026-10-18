@@ -1588,7 +1588,7 @@ client.on("interactionCreate", async interaction => {
                     "",
                     "Press **Join Competition** below if you want to compete!",
                     "The host will organise the match and announce the winner."
-                ].join("\\n\\n"),
+                ].join("\n\n"),
                 footer: { text: "AnchorFall • Break the Anchor. Own the Void." }
             };
             const row = new ActionRowBuilder().addComponents(
