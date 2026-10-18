@@ -95,6 +95,24 @@ const channel = settings.logChannelId
     }
 }
 
+async function sendCommandLog(guild, commandName, message) {
+    try {
+        let commandSettings = {};
+        try { commandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8")); } catch {}
+        const channelId = commandSettings[commandName]?.settings?.logChannelId;
+        const channel = channelId
+            ? await guild.channels.fetch(channelId).catch(() => null)
+            : null;
+        if (channel && channel.isTextBased()) {
+            await channel.send({ content: message });
+        } else {
+            await sendModLog(guild, message);
+        }
+    } catch (error) {
+        console.error("[Command log] Failed:", error.message);
+    }
+}
+
 function formatMember(member) {
     return `**User:** <@${member.id}> (${member.user.tag})\\n**ID:** ${member.id}\\n**Joined:** ${member.joinedAt ? member.joinedAt.toISOString() : "Unknown"}`;
 }
@@ -1619,6 +1637,7 @@ if (interaction.commandName === "kick") {
     }
 
     await member.kick(reason);
+    await sendCommandLog(interaction.guild, "kick", `👢 ${user.tag} was kicked by <@${interaction.user.id}>. Reason: ${reason}`);
 
     await interaction.reply(
         `👢 **${user.tag}** has been kicked.\n**Reason:** ${reason}`
@@ -1640,6 +1659,7 @@ if (interaction.commandName === "ban") {
     }
 
     await interaction.guild.members.ban(user.id, { reason });
+    await sendCommandLog(interaction.guild, "ban", `🔨 ${user.tag} was banned by <@${interaction.user.id}>. Reason: ${reason}`);
 
     await interaction.reply(
         `🔨 **${user.tag}** has been banned.\n**Reason:** ${reason}`
@@ -1665,6 +1685,7 @@ if (interaction.commandName === "timeout") {
     }
 
     await member.timeout(minutes * 60 * 1000, reason);
+    await sendCommandLog(interaction.guild, "timeout", `⏱️ ${user.tag} was timed out for ${minutes} minute(s) by <@${interaction.user.id}>. Reason: ${reason}`);
 
     await interaction.reply(
         `⏱️ **${user.tag}** has been timed out for **${minutes} minute(s)**.\n**Reason:** ${reason}`
@@ -1859,6 +1880,7 @@ if (interaction.commandName === "stats") {
 
             try {
                 const deleted = await interaction.channel.bulkDelete(amount, true);
+                await sendCommandLog(interaction.guild, "purge", `🧹 <@${interaction.user.id}> purged ${deleted.size} message(s) in <#${interaction.channelId}>.`);
 
                 await interaction.reply({
                     content: `🧹 Deleted **${deleted.size}** message(s).`,
@@ -1951,6 +1973,7 @@ if (interaction.commandName === "stats") {
             });
 
             saveWarnings(warnings);
+            await sendCommandLog(interaction.guild, "warn", `⚠️ <@${user.id}> was warned by <@${interaction.user.id}> (level ${level}). Reason: ${reason}`);
 
             let punishment = "⚠️ Warning only";
 
