@@ -1242,14 +1242,30 @@ client.on("interactionCreate", async interaction => {
 
         if (!interaction.isChatInputCommand()) return;
 
+        let allCommandSettings = {};
         try {
-            const commandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8"));
-            if (commandSettings[interaction.commandName]?.enabled === false) {
+            allCommandSettings = JSON.parse(fs.readFileSync("./command-settings.json", "utf8"));
+            if (allCommandSettings[interaction.commandName]?.enabled === false) {
                 await interaction.reply({ content: "This command is currently disabled by an administrator.", ephemeral: true });
                 return;
             }
         } catch (error) {
             if (error.code !== "ENOENT") console.warn("[Command settings] Could not read settings:", error.message);
+        }
+
+        const moderationCommands = new Set([
+            "warn", "warnings", "unwarn", "kick", "ban", "unban", "timeout",
+            "untimeout", "purge", "lock", "unlock", "slowmode"
+        ]);
+        const activeCommandSettings = allCommandSettings[interaction.commandName] || {};
+        const requiredStaffRoleId = activeCommandSettings.settings?.staffRoleId;
+        if (moderationCommands.has(interaction.commandName) && requiredStaffRoleId) {
+            const hasStaffRole = interaction.member?.roles?.cache?.has(requiredStaffRoleId);
+            const isGuildOwner = interaction.guild?.ownerId === interaction.user.id;
+            if (!hasStaffRole && !isGuildOwner) {
+                await interaction.reply({ content: "⛔ You need the staff role configured for this command to use it.", ephemeral: true });
+                return;
+            }
         }
 
         if (interaction.commandName === "ping") {
@@ -1633,7 +1649,10 @@ if (interaction.commandName === "ban") {
 
 if (interaction.commandName === "timeout") {
     const user = interaction.options.getUser("user");
-    const minutes = interaction.options.getInteger("minutes");
+    const timeoutSettings = allCommandSettings.timeout?.settings || {};
+            const requestedMinutes = interaction.options.getInteger("minutes");
+            const configuredDefault = Number(timeoutSettings.defaultMinutes);
+            const minutes = requestedMinutes || (Number.isFinite(configuredDefault) && configuredDefault > 0 ? configuredDefault : 10);
     const reason = interaction.options.getString("reason");
     const member = await interaction.guild.members.fetch(user.id);
 
@@ -1829,7 +1848,14 @@ if (interaction.commandName === "stats") {
         }
 
         if (interaction.commandName === "purge") {
-            const amount = interaction.options.getInteger("amount");
+            const requestedAmount = interaction.options.getInteger("amount");
+            const purgeSettings = allCommandSettings.purge?.settings || {};
+            const configuredMaximum = Number(purgeSettings.maxMessages);
+            const maximum = Number.isFinite(configuredMaximum) && configuredMaximum > 0 ? Math.min(100, Math.floor(configuredMaximum)) : 100;
+            const amount = Math.min(requestedAmount, maximum);
+            if (amount < requestedAmount) {
+                await interaction.reply({ content: `⚠️ The dashboard limit for /purge is **${maximum}** messages. I'll delete ${amount} instead.`, ephemeral: true });
+            }
 
             try {
                 const deleted = await interaction.channel.bulkDelete(amount, true);
