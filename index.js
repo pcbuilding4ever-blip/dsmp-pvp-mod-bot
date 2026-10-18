@@ -330,8 +330,8 @@ new SlashCommandBuilder()
     .addIntegerOption(option =>
         option
             .setName("minutes")
-            .setDescription("Timeout duration in minutes")
-            .setRequired(true)
+            .setDescription("Timeout duration in minutes (uses dashboard default if omitted)")
+            .setRequired(false)
             .setMinValue(1)
             .setMaxValue(40320)
     )
@@ -1670,9 +1670,9 @@ if (interaction.commandName === "ban") {
 if (interaction.commandName === "timeout") {
     const user = interaction.options.getUser("user");
     const timeoutSettings = allCommandSettings.timeout?.settings || {};
-            const requestedMinutes = interaction.options.getInteger("minutes");
-            const configuredDefault = Number(timeoutSettings.defaultMinutes);
-            const minutes = requestedMinutes || (Number.isFinite(configuredDefault) && configuredDefault > 0 ? configuredDefault : 10);
+    const requestedMinutes = interaction.options.getInteger("minutes");
+    const configuredDefault = Number(timeoutSettings.defaultMinutes);
+    const minutes = requestedMinutes ?? (Number.isFinite(configuredDefault) && configuredDefault > 0 ? Math.min(40320, Math.floor(configuredDefault)) : 10);
     const reason = interaction.options.getString("reason");
     const member = await interaction.guild.members.fetch(user.id);
 
