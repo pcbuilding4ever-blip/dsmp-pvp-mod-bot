@@ -429,6 +429,11 @@ new SlashCommandBuilder()
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
+        .setName("verification-panel")
+        .setDescription("Post the AnchorFall verification panel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
         .setName("ticketpanel")
         .setDescription("Post the private ticket panel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
@@ -744,6 +749,37 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId === "anchorfall_verify") {
+                if (!interaction.inGuild() || !interaction.member) {
+                    await interaction.reply({ content: "❌ Verification only works inside the server.", ephemeral: true });
+                    return;
+                }
+                await interaction.deferReply({ ephemeral: true });
+                try {
+                    const member = await interaction.guild.members.fetch(interaction.user.id);
+                    const verifiedRole = await interaction.guild.roles.fetch("1562149545604026468");
+                    if (!verifiedRole) {
+                        await interaction.editReply("❌ The verification role wasn't found. Please tell staff.");
+                        return;
+                    }
+                    if (member.roles.cache.has(verifiedRole.id)) {
+                        await interaction.editReply("✅ You're already verified!");
+                        return;
+                    }
+                    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe();
+                    if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles) ||
+                        botMember.roles.highest.comparePositionTo(verifiedRole) <= 0) {
+                        await interaction.editReply("❌ Verification is temporarily unavailable. Staff need to check the bot's Manage Roles permission and role order.");
+                        return;
+                    }
+                    await member.roles.add(verifiedRole, "Member completed AnchorFall verification");
+                    await interaction.editReply("✅ You're verified! Welcome to AnchorFall.");
+                } catch (error) {
+                    console.error("Verification button failed:", error);
+                    await interaction.editReply("❌ Verification failed. Please contact staff.");
+                }
+                return;
+            }
             if (interaction.customId.startsWith("schematic_request_open_ticket:")) {
                 if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
                     await interaction.reply({ content: "❌ Only staff can open request tickets.", ephemeral: true });
@@ -1402,6 +1438,35 @@ client.on("interactionCreate", async interaction => {
             } catch (error) {
                 console.error("Failed to post giveaway info:", error);
                 await interaction.editReply("❌ I couldn't post the giveaway information. Check the bot's channel permissions.");
+            }
+            return;
+        }
+
+        if (interaction.commandName === "verification-panel") {
+            await interaction.deferReply({ ephemeral: true });
+            try {
+                const channel = interaction.channel;
+                if (!channel || !channel.isTextBased()) {
+                    await interaction.editReply("❌ Run this command in a text channel.");
+                    return;
+                }
+                const panelEmbed = new EmbedBuilder()
+                    .setColor(0x7c3aed)
+                    .setTitle("🛡️ AnchorFall Verification")
+                    .setDescription("Welcome to **AnchorFall**! Press the button below to verify and receive access to the server.")
+                    .setFooter({ text: "AnchorFall • Break the Anchor. Own the Void." });
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("anchorfall_verify")
+                        .setLabel("Verify")
+                        .setEmoji("🛡️")
+                        .setStyle(ButtonStyle.Success)
+                );
+                await channel.send({ embeds: [panelEmbed], components: [row] });
+                await interaction.editReply("✅ Verification panel posted.");
+            } catch (error) {
+                console.error("Verification panel post failed:", error);
+                await interaction.editReply("❌ I couldn't post the verification panel. Check my channel permissions.");
             }
             return;
         }
