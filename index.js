@@ -564,7 +564,7 @@ async function createTicket(interaction, ticketType) {
     const openingMessage = aiHelperAdded
         ? `🎫 **New ${ticketType} Ticket**\n\n` +
           `Opened by <@${interaction.user.id}>.\n\n` +
-          "Please explain what you need help with. An AI helper will gather the details first. Type **staff** any time if you'd like a human to take over.\n\n" +
+          "Please explain what you need help with. An AI helper powered by OpenAI will read this ticket and gather details. Type **staff** any time for a human.\n\n" +
           "Use **Close Ticket** when you are finished."
         : `<@&1553780133867814982> 🎫 **New ${ticketType} Ticket**\n\n` +
           `Opened by <@${interaction.user.id}>.\n\n` +
