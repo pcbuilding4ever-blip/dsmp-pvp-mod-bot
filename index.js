@@ -26,7 +26,6 @@ const schematicStorage = require("./schematic-storage");
 const levelingSystem = require("./leveling-system");
 
 const TICKET_CHANNEL_ID = "1553777212170178570";
-const AI_TICKET_BOT_ID = process.env.AI_TICKET_BOT_ID;
 const RULES_CHANNEL_ID = "1550441311621095495";
 const SERVER_INFO_CHANNEL_ID = "1553771441462186004";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
@@ -551,7 +550,6 @@ async function createTicket(interaction, ticketType) {
     });
 
     await thread.members.add(interaction.user.id);
-    const aiHelperAdded = await addAiTicketBotToThread(thread);
 
     const ticketButtons = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -561,60 +559,22 @@ async function createTicket(interaction, ticketType) {
             .setStyle(ButtonStyle.Danger)
     );
 
-    const openingMessage = aiHelperAdded
-        ? `🎫 **New ${ticketType} Ticket**\n\n` +
-          `Opened by <@${interaction.user.id}>.\n\n` +
-          "Please explain what you need help with. An AI helper powered by OpenAI will read this ticket and gather details. Type **staff** any time for a human.\n\n" +
-          "Use **Close Ticket** when you are finished."
-        : `<@&1553780133867814982> 🎫 **New ${ticketType} Ticket**\n\n` +
-          `Opened by <@${interaction.user.id}>.\n\n` +
-          "Please explain what you need help with. Staff, please respond when available.\n\n" +
-          "Use **Close Ticket** when you are finished.";
-
     await thread.send({
-        content: openingMessage,
+        content:
+            `<@&1553780133867814982> 🎫 **New ${ticketType} Ticket**\n\n` +
+            `Opened by <@${interaction.user.id}>.\n\n` +
+            "Please explain what you need help with. Staff, please respond when available.\n\n" +
+            "Use **Close Ticket** when you are finished.",
         allowedMentions: {
             parse: [],
             users: [interaction.user.id],
-            roles: aiHelperAdded ? [] : ["1553780133867814982"]
+            roles: ["1553780133867814982"]
         },
         components: [ticketButtons]
     });
 
     return { thread, existing: false };
 }
-
-async function addAiTicketBotToThread(thread) {
-    if (!AI_TICKET_BOT_ID) return false;
-    try {
-        await thread.members.add(AI_TICKET_BOT_ID);
-        return true;
-    } catch (error) {
-        console.error("Could not add the AI ticket bot to thread " + thread.id + ":", error.message);
-        return false;
-    }
-}
-
-async function addAiTicketBotToActiveTickets() {
-    if (!AI_TICKET_BOT_ID) return;
-    const parent = await client.channels.fetch(TICKET_CHANNEL_ID).catch(() => null);
-    if (!parent || parent.type !== ChannelType.GuildText) {
-        console.error("AI ticket bot could not find the ticket parent channel.");
-        return;
-    }
-
-    const activeThreads = await parent.threads.fetchActive();
-    for (const thread of activeThreads.threads.values()) {
-        if (!thread.name.startsWith("ticket-")) continue;
-        await addAiTicketBotToThread(thread);
-    }
-}
-
-client.once("ready", () => {
-    addAiTicketBotToActiveTickets().catch(error =>
-        console.error("Could not add the AI ticket bot to active tickets:", error.message)
-    );
-});
 
 client.on("interactionCreate", async interaction => {
     if (interaction.isAutocomplete()) {
