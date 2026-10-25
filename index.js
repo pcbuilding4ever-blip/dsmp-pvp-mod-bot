@@ -328,6 +328,12 @@ new SlashCommandBuilder()
             .setDescription("Member to timeout")
             .setRequired(true)
     )
+    .addStringOption(option =>
+        option
+            .setName("reason")
+            .setDescription("Reason for the timeout")
+            .setRequired(true)
+    )
     .addIntegerOption(option =>
         option
             .setName("minutes")
@@ -335,12 +341,6 @@ new SlashCommandBuilder()
             .setRequired(false)
             .setMinValue(1)
             .setMaxValue(40320)
-    )
-    .addStringOption(option =>
-        option
-            .setName("reason")
-            .setDescription("Reason for the timeout")
-            .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
 
@@ -789,6 +789,22 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isButton()) {
+            if (interaction.customId === "support_ticket_open") {
+                await interaction.deferReply({ ephemeral: true });
+                try {
+                    const result = await createTicket(interaction, "Support");
+                    await interaction.editReply(
+                        result.existing
+                            ? `🎫 You already have an open ticket: <#${result.thread.id}>`
+                            : `✅ Your private support ticket has been opened: <#${result.thread.id}>`
+                    );
+                } catch (error) {
+                    console.error("Support ticket button failed:", error);
+                    await interaction.editReply("❌ I couldn't open a ticket. Please notify staff.");
+                }
+                return;
+            }
+
             if (interaction.customId === "anchorfall_verify") {
                 if (!interaction.inGuild() || !interaction.member) {
                     await interaction.reply({ content: "❌ Verification only works inside the server.", ephemeral: true });
