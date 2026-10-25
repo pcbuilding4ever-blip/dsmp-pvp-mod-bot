@@ -488,16 +488,16 @@ new SlashCommandBuilder()
 
     new SlashCommandBuilder()
         .setName("honeypot")
-        .setDescription("Manage a honeypot channel that auto-bans anyone who posts in it")
+        .setDescription("Manage a channel that catches spam bots, not regular members")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addSubcommand(subcommand =>
             subcommand
                 .setName("create")
-                .setDescription("Create a honeypot channel (bait for scammers/raiders)")
+                .setDescription("Create a bot-check channel")
                 .addStringOption(option =>
                     option
                         .setName("name")
-                        .setDescription("Channel name (default: free-nitro)")
+                        .setDescription("Channel name (default: bot-check)")
                         .setRequired(false)
                         .setMaxLength(100)
                 )
@@ -2220,8 +2220,8 @@ if (interaction.commandName === "stats") {
                 const ch = interaction.guild.channels.cache.get(settings.honeypotChannelId);
                 await interaction.reply({
                     content: ch
-                        ? `🕳 Current honeypot: ${ch} (\`${ch.id}\`)\nAnyone who posts there (except staff) is banned.`
-                        : `🕳 Honeypot channel ID \`${settings.honeypotChannelId}\` is set but the channel is missing. Use \`/honeypot disable\` or recreate it.`,
+                        ? `Current honeypot: ${ch} (\`${ch.id}\`)\nNew or default-avatar accounts that post there are banned. Normal members are not.`
+                        : `Honeypot channel ID \`${settings.honeypotChannelId}\` is set but the channel is missing. Use \`/honeypot disable\` or recreate it.`,
                     ephemeral: true
                 });
                 return;
@@ -2254,7 +2254,7 @@ if (interaction.commandName === "stats") {
                 settings.honeypotChannelId = channel.id;
                 saveSettings(interaction.guild.id, settings);
                 await interaction.reply({
-                    content: `🕳 ${channel} is now the honeypot. Anyone who posts there (except staff with Moderate Members / Manage Server) will be **banned**.`,
+                    content: `🕳 ${channel} is now the honeypot. Only bot-like accounts (new or no avatar) that post there are banned. Regular members are not.`,
                     ephemeral: true
                 });
                 await sendModLog(
@@ -2265,10 +2265,10 @@ if (interaction.commandName === "stats") {
             }
 
             if (sub === "create") {
-                const name = (interaction.options.getString("name") || "free-nitro")
+                const name = (interaction.options.getString("name") || "bot-check")
                     .toLowerCase()
                     .replace(/[^a-z0-9-_]/g, "-")
-                    .slice(0, 100) || "free-nitro";
+                    .slice(0, 100) || "bot-check";
                 const category = interaction.options.getChannel("category");
 
                 const me = interaction.guild.members.me;
@@ -2286,7 +2286,7 @@ if (interaction.commandName === "stats") {
                     name,
                     type: ChannelType.GuildText,
                     parent: category?.id ?? null,
-                    topic: "🎉 Claim free Nitro and rewards here!",
+                    topic: "Bot detection. Humans: do not post.",
                     permissionOverwrites: [
                         {
                             id: interaction.guild.id,
@@ -2316,18 +2316,17 @@ if (interaction.commandName === "stats") {
                 await channel.send({
                     embeds: [
                         new EmbedBuilder()
-                            .setColor(0x5865f2)
-                            .setTitle("🎉 Free Nitro & Rewards")
+                            .setColor(0xed4245)
+                            .setTitle("Bot check")
                             .setDescription(
-                                "Drop a message below to claim your free Nitro and exclusive rewards!\n\n" +
-                                "First come, first served — act fast!"
+                                "This channel is monitored to catch spam bots.\n\n" +
+                                "If you are a person, do not type here. Your message will be deleted."
                             )
-                            .setFooter({ text: "AnchorFall rewards" })
                     ]
                 });
 
                 await interaction.editReply(
-                    `🕳 Honeypot created: ${channel}\nAnyone who posts there (except staff) will be **banned**. Use \`/honeypot disable\` to stop monitoring.`
+                    `Honeypot created: ${channel}\nBot-like accounts that post here are banned. Regular members are not. Use \`/honeypot disable\` to stop monitoring.`
                 );
                 await sendModLog(
                     interaction.guild,
@@ -2376,15 +2375,31 @@ client.on("messageCreate", async message => {
 
             if (!isStaff) {
                 const contentPreview = (message.content || "[no text / attachment]").slice(0, 500);
+                const ageMs = Date.now() - message.author.createdTimestamp;
+                const looksLikeBot =
+                    ageMs < 14 * 24 * 60 * 60 * 1000 || !message.author.avatar;
+
                 try {
                     await message.delete().catch(() => {});
                 } catch {}
+
+                if (!looksLikeBot) {
+                    await sendModLog(
+                        message.guild,
+                        `**Honeypot ignored (not a bot)**\n` +
+                        `**User:** <@${message.author.id}> (\`${message.author.tag}\`)\n` +
+                        `**Channel:** <#${message.channel.id}>\n` +
+                        `**Message:** ${contentPreview}\n` +
+                        `**Action:** Message deleted, not banned`
+                    );
+                    return;
+                }
 
                 let banOk = false;
                 try {
                     if (member?.bannable) {
                         await member.ban({
-                            reason: "Honeypot: posted in bait channel",
+                            reason: "Honeypot: bot-like account posted in bot-check channel",
                             deleteMessageSeconds: 0
                         });
                         banOk = true;
@@ -2395,8 +2410,9 @@ client.on("messageCreate", async message => {
 
                 await sendModLog(
                     message.guild,
-                    `🕳 **Honeypot trigger**\n` +
+                    `**Honeypot bot ban**\n` +
                     `**User:** <@${message.author.id}> (\`${message.author.tag}\` / \`${message.author.id}\`)\n` +
+                    `**Account age:** ${Math.floor(ageMs / 86400000)}d, avatar: ${message.author.avatar ? "yes" : "no"}\n` +
                     `**Channel:** <#${message.channel.id}>\n` +
                     `**Message:** ${contentPreview}\n` +
                     `**Action:** ${banOk ? "Banned" : "Ban failed (check role hierarchy / permissions)"}`
