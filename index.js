@@ -44,12 +44,14 @@ function loadSettings(guildId) {
 
         return all[guildId] || {
             logChannelId: null,
-            flaggedWords: []
+            flaggedWords: [],
+            honeypotChannelId: null
         };
     } catch {
         return {
             logChannelId: null,
-            flaggedWords: []
+            flaggedWords: [],
+            honeypotChannelId: null
         };
     }
 }
@@ -483,6 +485,52 @@ new SlashCommandBuilder()
         .setName("staffapply")
         .setDescription("Post the staff application panel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName("honeypot")
+        .setDescription("Manage a honeypot channel that auto-bans anyone who posts in it")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName("create")
+                .setDescription("Create a honeypot channel (bait for scammers/raiders)")
+                .addStringOption(option =>
+                    option
+                        .setName("name")
+                        .setDescription("Channel name (default: free-nitro)")
+                        .setRequired(false)
+                        .setMaxLength(100)
+                )
+                .addChannelOption(option =>
+                    option
+                        .setName("category")
+                        .setDescription("Category to place the channel in")
+                        .addChannelTypes(ChannelType.GuildCategory)
+                        .setRequired(false)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName("set")
+                .setDescription("Mark an existing channel as the honeypot")
+                .addChannelOption(option =>
+                    option
+                        .setName("channel")
+                        .setDescription("Channel to use as honeypot")
+                        .addChannelTypes(ChannelType.GuildText)
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName("disable")
+                .setDescription("Stop using the current honeypot (does not delete the channel)")
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName("status")
+                .setDescription("Show the current honeypot channel")
+        ),
 
     ...vouchSystem.commands,
     ...spawnerPrices.commands,
@@ -2156,6 +2204,138 @@ if (interaction.commandName === "stats") {
 
             await interaction.reply(message);
         }
+
+        if (interaction.commandName === "honeypot") {
+            const sub = interaction.options.getSubcommand();
+            const settings = loadSettings(interaction.guild.id);
+
+            if (sub === "status") {
+                if (!settings.honeypotChannelId) {
+                    await interaction.reply({
+                        content: "🕳 No honeypot channel is set. Use `/honeypot create` or `/honeypot set`.",
+                        ephemeral: true
+                    });
+                    return;
+                }
+                const ch = interaction.guild.channels.cache.get(settings.honeypotChannelId);
+                await interaction.reply({
+                    content: ch
+                        ? `🕳 Current honeypot: ${ch} (\`${ch.id}\`)\nAnyone who posts there (except staff) is banned.`
+                        : `🕳 Honeypot channel ID \`${settings.honeypotChannelId}\` is set but the channel is missing. Use \`/honeypot disable\` or recreate it.`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            if (sub === "disable") {
+                if (!settings.honeypotChannelId) {
+                    await interaction.reply({
+                        content: "🕳 No honeypot is currently active.",
+                        ephemeral: true
+                    });
+                    return;
+                }
+                const oldId = settings.honeypotChannelId;
+                settings.honeypotChannelId = null;
+                saveSettings(interaction.guild.id, settings);
+                await interaction.reply({
+                    content: `🕳 Honeypot disabled. Channel \`${oldId}\` is no longer monitored (channel was not deleted).`,
+                    ephemeral: true
+                });
+                await sendModLog(
+                    interaction.guild,
+                    `🕳 **Honeypot disabled** by <@${interaction.user.id}> (was channel \`${oldId}\`)`
+                );
+                return;
+            }
+
+            if (sub === "set") {
+                const channel = interaction.options.getChannel("channel");
+                settings.honeypotChannelId = channel.id;
+                saveSettings(interaction.guild.id, settings);
+                await interaction.reply({
+                    content: `🕳 ${channel} is now the honeypot. Anyone who posts there (except staff with Moderate Members / Manage Server) will be **banned**.`,
+                    ephemeral: true
+                });
+                await sendModLog(
+                    interaction.guild,
+                    `🕳 **Honeypot set** by <@${interaction.user.id}> → ${channel} (\`${channel.id}\`)`
+                );
+                return;
+            }
+
+            if (sub === "create") {
+                const name = (interaction.options.getString("name") || "free-nitro")
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-_]/g, "-")
+                    .slice(0, 100) || "free-nitro";
+                const category = interaction.options.getChannel("category");
+
+                const me = interaction.guild.members.me;
+                if (!me.permissions.has(PermissionFlagsBits.ManageChannels)) {
+                    await interaction.reply({
+                        content: "❌ I need **Manage Channels** to create a honeypot channel.",
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                await interaction.deferReply({ ephemeral: true });
+
+                const channel = await interaction.guild.channels.create({
+                    name,
+                    type: ChannelType.GuildText,
+                    parent: category?.id ?? null,
+                    topic: "🎉 Claim free Nitro and rewards here!",
+                    permissionOverwrites: [
+                        {
+                            id: interaction.guild.id,
+                            allow: [
+                                PermissionFlagsBits.ViewChannel,
+                                PermissionFlagsBits.SendMessages,
+                                PermissionFlagsBits.ReadMessageHistory
+                            ]
+                        },
+                        {
+                            id: me.id,
+                            allow: [
+                                PermissionFlagsBits.ViewChannel,
+                                PermissionFlagsBits.SendMessages,
+                                PermissionFlagsBits.ManageMessages,
+                                PermissionFlagsBits.ManageChannels,
+                                PermissionFlagsBits.BanMembers
+                            ]
+                        }
+                    ],
+                    reason: `Honeypot created by ${interaction.user.tag}`
+                });
+
+                settings.honeypotChannelId = channel.id;
+                saveSettings(interaction.guild.id, settings);
+
+                await channel.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x5865f2)
+                            .setTitle("🎉 Free Nitro & Rewards")
+                            .setDescription(
+                                "Drop a message below to claim your free Nitro and exclusive rewards!\n\n" +
+                                "First come, first served — act fast!"
+                            )
+                            .setFooter({ text: "AnchorFall rewards" })
+                    ]
+                });
+
+                await interaction.editReply(
+                    `🕳 Honeypot created: ${channel}\nAnyone who posts there (except staff) will be **banned**. Use \`/honeypot disable\` to stop monitoring.`
+                );
+                await sendModLog(
+                    interaction.guild,
+                    `🕳 **Honeypot created** by <@${interaction.user.id}> → ${channel} (\`${channel.id}\`)`
+                );
+                return;
+            }
+        }
     } catch (error) {
         console.error("❌ Interaction handler failed:", error);
 
@@ -2182,6 +2362,52 @@ if (interaction.commandName === "stats") {
 
 client.on("messageCreate", async message => {
     if (!message.guild || message.author.bot) return;
+
+    // Honeypot: ban non-staff who post in the configured channel
+    try {
+        const hpSettings = loadSettings(message.guild.id);
+        if (hpSettings.honeypotChannelId && message.channel.id === hpSettings.honeypotChannelId) {
+            const member = message.member;
+            const isStaff =
+                member &&
+                (member.permissions.has(PermissionFlagsBits.ModerateMembers) ||
+                    member.permissions.has(PermissionFlagsBits.ManageGuild) ||
+                    member.permissions.has(PermissionFlagsBits.Administrator));
+
+            if (!isStaff) {
+                const contentPreview = (message.content || "[no text / attachment]").slice(0, 500);
+                try {
+                    await message.delete().catch(() => {});
+                } catch {}
+
+                let banOk = false;
+                try {
+                    if (member?.bannable) {
+                        await member.ban({
+                            reason: "Honeypot: posted in bait channel",
+                            deleteMessageSeconds: 0
+                        });
+                        banOk = true;
+                    }
+                } catch (banErr) {
+                    console.error("Honeypot ban failed:", banErr.message);
+                }
+
+                await sendModLog(
+                    message.guild,
+                    `🕳 **Honeypot trigger**\n` +
+                    `**User:** <@${message.author.id}> (\`${message.author.tag}\` / \`${message.author.id}\`)\n` +
+                    `**Channel:** <#${message.channel.id}>\n` +
+                    `**Message:** ${contentPreview}\n` +
+                    `**Action:** ${banOk ? "Banned" : "Ban failed (check role hierarchy / permissions)"}`
+                );
+                return;
+            }
+        }
+    } catch (hpError) {
+        console.error("Honeypot handler failed:", hpError.message);
+    }
+
     levelingSystem.awardMessageXp(message).catch(error => console.error("Leveling message handler failed:", error.message));
     const now = Date.now();
     const history = spamTracker.get(message.author.id) || [];
