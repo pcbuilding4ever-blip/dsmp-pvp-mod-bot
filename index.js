@@ -488,7 +488,7 @@ new SlashCommandBuilder()
 
     new SlashCommandBuilder()
         .setName("honeypot")
-        .setDescription("Manage a channel that catches spam bots, not regular members")
+        .setDescription("Manage a channel that bans anyone who posts in it, then DMs a rejoin invite")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addSubcommand(subcommand =>
             subcommand
@@ -2220,7 +2220,7 @@ if (interaction.commandName === "stats") {
                 const ch = interaction.guild.channels.cache.get(settings.honeypotChannelId);
                 await interaction.reply({
                     content: ch
-                        ? `Current honeypot: ${ch} (\`${ch.id}\`)\nNew or default-avatar accounts that post there are banned. Normal members are not.`
+                        ? `Current honeypot: ${ch} (\`${ch.id}\`)\nAnyone who posts there is banned, their messages from the last 7 days are deleted, and they are DM'd a server invite.`
                         : `Honeypot channel ID \`${settings.honeypotChannelId}\` is set but the channel is missing. Use \`/honeypot disable\` or recreate it.`,
                     ephemeral: true
                 });
@@ -2254,7 +2254,7 @@ if (interaction.commandName === "stats") {
                 settings.honeypotChannelId = channel.id;
                 saveSettings(interaction.guild.id, settings);
                 await interaction.reply({
-                    content: `🕳 ${channel} is now the honeypot. Only bot-like accounts (new or no avatar) that post there are banned. Regular members are not.`,
+                    content: `${channel} is now the honeypot. Anyone who posts there is banned, their recent messages are deleted, and they get a DM with a server invite.`,
                     ephemeral: true
                 });
                 await sendModLog(
@@ -2319,14 +2319,14 @@ if (interaction.commandName === "stats") {
                             .setColor(0xed4245)
                             .setTitle("Bot check")
                             .setDescription(
-                                "This channel is monitored to catch spam bots.\n\n" +
-                                "If you are a person, do not type here. Your message will be deleted."
+                                "This channel is monitored.\n\n" +
+                                "If you type here you will be banned and your recent messages will be removed. A rejoin link is sent by DM."
                             )
                     ]
                 });
 
                 await interaction.editReply(
-                    `Honeypot created: ${channel}\nBot-like accounts that post here are banned. Regular members are not. Use \`/honeypot disable\` to stop monitoring.`
+                    `Honeypot created: ${channel}\nAnyone who posts here is banned, their messages from the last 7 days are deleted, and they are DM'd a server invite. Use \`/honeypot disable\` to stop monitoring.`
                 );
                 await sendModLog(
                     interaction.guild,
@@ -2362,63 +2362,73 @@ if (interaction.commandName === "stats") {
 client.on("messageCreate", async message => {
     if (!message.guild || message.author.bot) return;
 
-    // Honeypot: ban non-staff who post in the configured channel
+    // Honeypot: ban anyone who posts, DM a rejoin invite first, wipe recent messages
     try {
         const hpSettings = loadSettings(message.guild.id);
         if (hpSettings.honeypotChannelId && message.channel.id === hpSettings.honeypotChannelId) {
-            const member = message.member;
-            const isStaff =
-                member &&
-                (member.permissions.has(PermissionFlagsBits.ModerateMembers) ||
-                    member.permissions.has(PermissionFlagsBits.ManageGuild) ||
-                    member.permissions.has(PermissionFlagsBits.Administrator));
+            const contentPreview = (message.content || "[no text / attachment]").slice(0, 500);
 
-            if (!isStaff) {
-                const contentPreview = (message.content || "[no text / attachment]").slice(0, 500);
-                const ageMs = Date.now() - message.author.createdTimestamp;
-                const looksLikeBot =
-                    ageMs < 14 * 24 * 60 * 60 * 1000 || !message.author.avatar;
-
-                try {
-                    await message.delete().catch(() => {});
-                } catch {}
-
-                if (!looksLikeBot) {
-                    await sendModLog(
-                        message.guild,
-                        `**Honeypot ignored (not a bot)**\n` +
-                        `**User:** <@${message.author.id}> (\`${message.author.tag}\`)\n` +
-                        `**Channel:** <#${message.channel.id}>\n` +
-                        `**Message:** ${contentPreview}\n` +
-                        `**Action:** Message deleted, not banned`
-                    );
-                    return;
-                }
-
-                let banOk = false;
-                try {
-                    if (member?.bannable) {
-                        await member.ban({
-                            reason: "Honeypot: bot-like account posted in bot-check channel",
-                            deleteMessageSeconds: 0
+            let inviteUrl = null;
+            try {
+                if (message.guild.vanityURLCode) {
+                    inviteUrl = `https://discord.gg/${message.guild.vanityURLCode}`;
+                } else {
+                    const rulesChannel = await message.guild.channels.fetch(RULES_CHANNEL_ID).catch(() => null);
+                    const inviteChannel =
+                        rulesChannel && rulesChannel.isTextBased()
+                            ? rulesChannel
+                            : message.guild.channels.cache.find(
+                                ch =>
+                                    ch.isTextBased() &&
+                                    ch.permissionsFor(message.guild.members.me)?.has(PermissionFlagsBits.CreateInstantInvite)
+                            );
+                    if (inviteChannel) {
+                        const invite = await inviteChannel.createInvite({
+                            maxAge: 0,
+                            maxUses: 0,
+                            unique: false,
+                            reason: "Honeypot rejoin invite"
                         });
-                        banOk = true;
+                        inviteUrl = invite.url;
                     }
-                } catch (banErr) {
-                    console.error("Honeypot ban failed:", banErr.message);
                 }
-
-                await sendModLog(
-                    message.guild,
-                    `**Honeypot bot ban**\n` +
-                    `**User:** <@${message.author.id}> (\`${message.author.tag}\` / \`${message.author.id}\`)\n` +
-                    `**Account age:** ${Math.floor(ageMs / 86400000)}d, avatar: ${message.author.avatar ? "yes" : "no"}\n` +
-                    `**Channel:** <#${message.channel.id}>\n` +
-                    `**Message:** ${contentPreview}\n` +
-                    `**Action:** ${banOk ? "Banned" : "Ban failed (check role hierarchy / permissions)"}`
-                );
-                return;
+            } catch (inviteError) {
+                console.error("Honeypot invite failed:", inviteError.message);
             }
+
+            let dmOk = false;
+            try {
+                await message.author.send(
+                    inviteUrl
+                        ? `You were removed from **${message.guild.name}** for posting in a monitored channel.\nRejoin: ${inviteUrl}`
+                        : `You were removed from **${message.guild.name}** for posting in a monitored channel.`
+                );
+                dmOk = true;
+            } catch (dmError) {
+                console.error("Honeypot DM failed:", dmError.message);
+            }
+
+            let banOk = false;
+            try {
+                await message.guild.members.ban(message.author.id, {
+                    reason: "Honeypot: posted in monitored channel",
+                    deleteMessageSeconds: 7 * 24 * 60 * 60
+                });
+                banOk = true;
+            } catch (banErr) {
+                console.error("Honeypot ban failed:", banErr.message);
+            }
+
+            await sendModLog(
+                message.guild,
+                `**Honeypot ban**\n` +
+                `**User:** <@${message.author.id}> (\`${message.author.tag}\` / \`${message.author.id}\`)\n` +
+                `**Channel:** <#${message.channel.id}>\n` +
+                `**Message:** ${contentPreview}\n` +
+                `**DM:** ${dmOk ? (inviteUrl || "sent, no invite") : "failed"}\n` +
+                `**Action:** ${banOk ? "Banned and deleted messages from the last 7 days" : "Ban failed (check role hierarchy / Ban Members)"}`
+            );
+            return;
         }
     } catch (hpError) {
         console.error("Honeypot handler failed:", hpError.message);
