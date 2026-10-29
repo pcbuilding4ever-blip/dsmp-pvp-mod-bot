@@ -33,11 +33,9 @@ const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
 const SCAM_REPORT_LOG_CHANNEL_ID = "1565309407598743652";
 const SCAM_REPORT_CATEGORIES = [
-    ["item_theft", "In-Game Item Theft"],
-    ["fake_trade", "Fake Trade"],
-    ["payment", "Payment Scam"],
-    ["impersonation", "Impersonation"],
-    ["other", "Other"]
+    ["seller_raid", "Seller Raid After a Base Sale", "Paid for a base, then the seller raided it"],
+    ["spawner_scam", "Spawner Trade Scam", "Spawners were misrepresented or never handed over"],
+    ["undelivered", "Paid, Item or Build Never Delivered", "Money was taken and the item or build never arrived"]
 ];
 const GIVEAWAYS_FILE = "./giveaways.json";
 const GAMES_FILE = "./games.json";
