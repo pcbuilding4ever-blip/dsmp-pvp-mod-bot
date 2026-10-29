@@ -871,10 +871,21 @@ client.on("interactionCreate", async interaction => {
                     reason: `Scam report opened by ${interaction.user.tag}`
                 });
                 await thread.members.add(interaction.user.id).catch(() => {});
+                const accusedMatch = accusedId.match(/\d{17,20}/);
+                let trustNote = "No Discord user ID was found on this report, so trust was not changed.";
+                if (accusedMatch) {
+                    try {
+                        const score = await vouchSystem.applyAcceptedReportPenalty(interaction.guild.id, accusedMatch[0]);
+                        trustNote = `Trust for <@${accusedMatch[0]}> is now **${score}%** (−25, or 0% if they had no rating).`;
+                    } catch (error) {
+                        console.error("Scam report trust penalty failed:", error.message);
+                        trustNote = "Trust could not be updated. Check the database connection.";
+                    }
+                }
                 await thread.send({
-                    content: `<@${interaction.user.id}> claimed this case (**${label}**).`,
+                    content: `<@${interaction.user.id}> claimed this case (**${label}**).\n${trustNote}`,
                     embeds: source ? [EmbedBuilder.from(source)] : [],
-                    allowedMentions: { users: [interaction.user.id] }
+                    allowedMentions: { users: [interaction.user.id, ...(accusedMatch ? [accusedMatch[0]] : [])] }
                 });
                 const opened = source
                     ? EmbedBuilder.from(source).setColor(0x57f287).setFooter({ text: "Case Opened / Under Review" })
@@ -1744,7 +1755,10 @@ client.on("interactionCreate", async interaction => {
                     new EmbedBuilder()
                         .setColor(0xed4245)
                         .setTitle("Report a Scammer")
-                        .setDescription("Press the button below. A form will ask for the offender, their in-game name, and your proof.")
+                        .setDescription(
+                            "Press the button below. A form will ask for the offender, their in-game name, and your proof.\n\n" +
+                            "Remember, we cannot restore lost items or money. This feature is simply to make it easier for people to be aware of scammers."
+                        )
                 ],
                 components: [
                     new ActionRowBuilder().addComponents(

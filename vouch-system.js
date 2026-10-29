@@ -39,6 +39,11 @@ async function initVouchDatabase() {
     await db().query("ALTER TABLE vouches ADD COLUMN IF NOT EXISTS reviewed BOOLEAN NOT NULL DEFAULT FALSE");
     await db().query("ALTER TABLE vouches ADD COLUMN IF NOT EXISTS reviewed_by TEXT");
     await db().query("ALTER TABLE vouches ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ");
+    await db().query(
+        "CREATE TABLE IF NOT EXISTS trust_penalties (" +
+        "guild_id TEXT NOT NULL, target_id TEXT NOT NULL, penalty INTEGER NOT NULL DEFAULT 0, " +
+        "PRIMARY KEY (guild_id, target_id))"
+    );
 }
 
 const commands = [
@@ -107,7 +112,7 @@ function makePanel(type) {
             : "Vouch for a player you have genuinely traded or worked with, or view a member's trust profile and vouch history.")
         .addFields(
             { name: "How to use", value: "1. Choose an action below.\n2. Select a member.\n3. Enter a clear, honest reason.\n4. Submit. The bot saves it permanently." },
-            { name: "Trust score", value: "Trust is **N/A** until the member has at least one active vouch. Normal vouches add 5 points; scam vouches subtract 15 points. Scores stay between 0% and 100%." }
+            { name: "Trust score", value: "Trust is **N/A** until the member has at least one active vouch. Normal vouches add 5 points; scam vouches subtract 15 points. An accepted scam report lowers trust by 25 points, or sets an N/A score to 0%. Scores stay between 0% and 100%." }
         )
         .setFooter({ text: "Vouches are community reports, not proof by themselves." });
     const row = new ActionRowBuilder().addComponents(
@@ -122,27 +127,44 @@ function makePanel(type) {
     return { embeds: [embed], components: [row] };
 }
 
-async function trustFor(guildId, targetId) {
+async function trustState(guildId, targetId) {
     const result = await db().query(
         "SELECT type, COUNT(*)::int AS count FROM vouches WHERE guild_id=$1 AND target_id=$2 AND active=TRUE GROUP BY type",
         [guildId, targetId]
     );
-    if (!result.rows.length) return null;
+    const penaltyResult = await db().query(
+        "SELECT penalty FROM trust_penalties WHERE guild_id=$1 AND target_id=$2",
+        [guildId, targetId]
+    );
     const counts = { normal: 0, scam: 0 };
     for (const row of result.rows) counts[row.type] = row.count;
-    return Math.max(0, Math.min(100, 100 + counts.normal * 5 - counts.scam * 15));
+    const penalty = penaltyResult.rows[0] ? penaltyResult.rows[0].penalty : 0;
+    const total = counts.normal + counts.scam;
+    if (!total && penalty === 0) return { score: null, counts, penalty };
+    const base = total ? Math.max(0, Math.min(100, 100 + counts.normal * 5 - counts.scam * 15)) : null;
+    const score = base === null ? 0 : Math.max(0, Math.min(100, base - penalty));
+    return { score, counts, penalty };
+}
+
+async function trustFor(guildId, targetId) {
+    return (await trustState(guildId, targetId)).score;
+}
+
+async function applyAcceptedReportPenalty(guildId, targetId) {
+    await db().query(
+        "INSERT INTO trust_penalties (guild_id, target_id, penalty) VALUES ($1, $2, 25) " +
+        "ON CONFLICT (guild_id, target_id) DO UPDATE SET penalty = trust_penalties.penalty + 25",
+        [guildId, targetId]
+    );
+    return (await trustState(guildId, targetId)).score;
 }
 
 async function showProfile(interaction, targetId, page, edit) {
     const gid = interaction.guild.id;
-    const countsResult = await db().query(
-        "SELECT type, COUNT(*)::int AS count FROM vouches WHERE guild_id=$1 AND target_id=$2 AND active=TRUE GROUP BY type",
-        [gid, targetId]
-    );
-    const counts = { normal: 0, scam: 0 };
-    for (const row of countsResult.rows) counts[row.type] = row.count;
+    const state = await trustState(gid, targetId);
+    const counts = state.counts;
     const total = counts.normal + counts.scam;
-    const trust = total ? Math.max(0, Math.min(100, 100 + counts.normal * 5 - counts.scam * 15)) + "%" : "N/A";
+    const trust = state.score === null ? "N/A" : state.score + "%";
     const pageSize = 5;
     const maxPage = Math.max(0, Math.ceil(total / pageSize) - 1);
     page = Math.max(0, Math.min(Number(page) || 0, maxPage));
@@ -413,4 +435,4 @@ async function handleVouchInteraction(interaction) {
     return false;
 }
 
-module.exports = { commands, initVouchDatabase, handleVouchInteraction };
+module.exports = { commands, initVouchDatabase, handleVouchInteraction, applyAcceptedReportPenalty };
