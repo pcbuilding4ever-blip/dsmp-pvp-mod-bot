@@ -1323,9 +1323,10 @@ client.on("interactionCreate", async interaction => {
                     new StringSelectMenuBuilder()
                         .setCustomId("scam_report:categorize")
                         .setPlaceholder("Categorize this report")
-                        .addOptions(SCAM_REPORT_CATEGORIES.map(([value, name]) => ({
+                        .addOptions(SCAM_REPORT_CATEGORIES.map(([value, name, description]) => ({
                             label: name,
-                            value
+                            value,
+                            description
                         })))
                 );
                 await logChannel.send({
