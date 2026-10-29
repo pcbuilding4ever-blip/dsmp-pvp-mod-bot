@@ -31,6 +31,7 @@ const RULES_CHANNEL_ID = "1550441311621095495";
 const SERVER_INFO_CHANNEL_ID = "1553771441462186004";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
+const SCAM_REPORT_LOG_CHANNEL_ID = "1565309407598743652";
 const GIVEAWAYS_FILE = "./giveaways.json";
 const GAMES_FILE = "./games.json";
 const giveawayTimers = new Map();
@@ -485,6 +486,11 @@ new SlashCommandBuilder()
         .setName("staffapply")
         .setDescription("Post the staff application panel")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName("scamreport")
+        .setDescription("Post the scam report button in this channel")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     new SlashCommandBuilder()
         .setName("honeypot")
@@ -1148,6 +1154,81 @@ client.on("interactionCreate", async interaction => {
                 await interaction.reply({ content: `🎁 Your private giveaway claim ticket is ready: <#${thread.id}>`, ephemeral: true });
                 return;
             }
+            if (interaction.customId === "scam_report:init") {
+                const modal = new ModalBuilder()
+                    .setCustomId("scam_report:modal")
+                    .setTitle("Submit Scam Report")
+                    .addComponents(
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("scam_target_id")
+                                .setLabel("Offender's Discord ID or Mention")
+                                .setStyle(TextInputStyle.Short)
+                                .setRequired(true)
+                                .setMaxLength(100)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("scam_target_ign")
+                                .setLabel("Offender's In-Game Name (IGN)")
+                                .setStyle(TextInputStyle.Short)
+                                .setRequired(false)
+                                .setPlaceholder("Leave blank if unknown")
+                                .setMaxLength(64)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId("scam_details")
+                                .setLabel("Details & Proof Links")
+                                .setStyle(TextInputStyle.Paragraph)
+                                .setRequired(true)
+                                .setPlaceholder("What happened, and links to screenshots or clips")
+                                .setMaxLength(1000)
+                        )
+                    );
+                await interaction.showModal(modal);
+                return;
+            }
+            if (interaction.customId.startsWith("scam_report:cat:")) {
+                const category = interaction.customId.slice("scam_report:cat:".length);
+                const labels = {
+                    confirmed: "Confirmed Scam",
+                    insufficient: "Insufficient Proof",
+                    not_scam: "Not a Scam"
+                };
+                const label = labels[category];
+                if (!label) return;
+                if (!interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
+                    await interaction.reply({ content: "You need Moderate Members to categorize this report.", ephemeral: true });
+                    return;
+                }
+                if (interaction.message.hasThread) {
+                    await interaction.reply({ content: `This report is already logged in <#${interaction.message.thread.id}>.`, ephemeral: true });
+                    return;
+                }
+                await interaction.deferUpdate();
+                const thread = await interaction.message.startThread({
+                    name: `scam-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`.slice(0, 100),
+                    reason: `Scam report marked ${label} by ${interaction.user.tag}`
+                });
+                await thread.send({
+                    content:
+                        `**${label}** — logged by <@${interaction.user.id}>\n` +
+                        `Original report: ${interaction.message.url}`
+                });
+                await interaction.message.edit({
+                    components: [
+                        new ActionRowBuilder().addComponents(
+                            new ButtonBuilder()
+                                .setCustomId("scam_report:logged")
+                                .setLabel(label)
+                                .setStyle(category === "confirmed" ? ButtonStyle.Danger : ButtonStyle.Secondary)
+                                .setDisabled(true)
+                        )
+                    ]
+                });
+                return;
+            }
             if (interaction.customId !== "close_ticket") return;
 
             if (!interaction.channel.isThread()) {
@@ -1221,6 +1302,38 @@ client.on("interactionCreate", async interaction => {
         }
 
         if (interaction.isModalSubmit()) {
+            if (interaction.customId === "scam_report:modal") {
+                const target = interaction.fields.getTextInputValue("scam_target_id").trim();
+                const ign = interaction.fields.getTextInputValue("scam_target_ign").trim();
+                const details = interaction.fields.getTextInputValue("scam_details").trim();
+                const logChannel = await interaction.guild.channels.fetch(SCAM_REPORT_LOG_CHANNEL_ID).catch(() => null);
+                if (!logChannel || !logChannel.isTextBased()) {
+                    await interaction.reply({ content: "I couldn't find the staff scam-report channel. Please tell staff.", ephemeral: true });
+                    return;
+                }
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId("scam_report:cat:confirmed").setLabel("Confirmed Scam").setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId("scam_report:cat:insufficient").setLabel("Insufficient Proof").setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId("scam_report:cat:not_scam").setLabel("Not a Scam").setStyle(ButtonStyle.Success)
+                );
+                await logChannel.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0xed4245)
+                            .setTitle("Scam Report")
+                            .addFields(
+                                { name: "Reporter", value: `<@${interaction.user.id}> (\`${interaction.user.id}\`)` },
+                                { name: "Offender", value: target.slice(0, 1024) },
+                                { name: "IGN", value: (ign || "Unknown").slice(0, 1024) },
+                                { name: "Details & proof", value: details.slice(0, 1024) }
+                            )
+                            .setTimestamp()
+                    ],
+                    components: [row]
+                });
+                await interaction.reply({ content: "Report sent to staff. Thanks.", ephemeral: true });
+                return;
+            }
             if (interaction.customId === "schematic_request_form") {
                 const theme = interaction.fields.getTextInputValue("schematic_theme");
                 const colours = interaction.fields.getTextInputValue("schematic_colours");
@@ -1605,6 +1718,32 @@ client.on("interactionCreate", async interaction => {
                     await interaction.reply({ content: "❌ Couldn't post the ticket panel. Check the bot's channel permissions.", ephemeral: true });
                 }
             }
+            return;
+        }
+
+        if (interaction.commandName === "scamreport") {
+            if (!interaction.channel?.isTextBased()) {
+                await interaction.reply({ content: "Use this in the #report-here channel.", ephemeral: true });
+                return;
+            }
+            await interaction.channel.send({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xed4245)
+                        .setTitle("Report a Scammer")
+                        .setDescription("Press the button below. A form will ask for the offender, their in-game name, and your proof.")
+                ],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId("scam_report:init")
+                            .setLabel("Report a Scammer")
+                            .setEmoji("⚠️")
+                            .setStyle(ButtonStyle.Danger)
+                    )
+                ]
+            });
+            await interaction.reply({ content: "Scam report panel posted.", ephemeral: true });
             return;
         }
 
