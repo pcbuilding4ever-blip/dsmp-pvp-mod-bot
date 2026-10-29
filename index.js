@@ -32,6 +32,13 @@ const SERVER_INFO_CHANNEL_ID = "1553771441462186004";
 const GIVEAWAY_APPLICATION_CHANNEL_ID = "1557812749382193223";
 const PARTNER_APPLICATION_CHANNEL_ID = "1557813451034988646";
 const SCAM_REPORT_LOG_CHANNEL_ID = "1565309407598743652";
+const SCAM_REPORT_CATEGORIES = [
+    ["item_theft", "In-Game Item Theft"],
+    ["fake_trade", "Fake Trade"],
+    ["payment", "Payment Scam"],
+    ["impersonation", "Impersonation"],
+    ["other", "Other"]
+];
 const GIVEAWAYS_FILE = "./giveaways.json";
 const GAMES_FILE = "./games.json";
 const giveawayTimers = new Map();
@@ -839,6 +846,47 @@ client.on("interactionCreate", async interaction => {
                 return;
             }
 
+            if (interaction.customId === "scam_report:categorize") {
+                const label = SCAM_REPORT_CATEGORIES.find(entry => entry[0] === interaction.values[0])?.[1];
+                if (!label) return;
+                if (!interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
+                    await interaction.reply({ content: "You need Moderate Members to categorize this report.", ephemeral: true });
+                    return;
+                }
+                if (interaction.message.hasThread) {
+                    await interaction.reply({ content: `This report is already open in <#${interaction.message.thread.id}>.`, ephemeral: true });
+                    return;
+                }
+
+                const source = interaction.message.embeds[0];
+                const ign = source?.fields?.find(field => field.name === "Accused IGN")?.value?.trim() || "Not Provided";
+                const accusedId = source?.fields?.find(field => field.name === "Accused User ID")?.value?.trim() || "unknown";
+                const subject = ign === "Not Provided" ? accusedId : ign;
+                const threadName = `[${label}] - ${subject}`.slice(0, 100);
+
+                await interaction.deferUpdate();
+                const thread = await interaction.message.startThread({
+                    name: threadName,
+                    type: ChannelType.PrivateThread,
+                    reason: `Scam report opened by ${interaction.user.tag}`
+                });
+                await thread.members.add(interaction.user.id).catch(() => {});
+                await thread.send({
+                    content: `<@${interaction.user.id}> claimed this case (**${label}**).`,
+                    embeds: source ? [EmbedBuilder.from(source)] : [],
+                    allowedMentions: { users: [interaction.user.id] }
+                });
+                const opened = source
+                    ? EmbedBuilder.from(source).setColor(0x57f287).setFooter({ text: "Case Opened / Under Review" })
+                    : new EmbedBuilder().setColor(0x57f287).setDescription("Case Opened / Under Review");
+                await interaction.message.edit({
+                    content: "🟢 Case Opened / Under Review",
+                    embeds: [opened],
+                    components: []
+                });
+                return;
+            }
+
             return;
         }
 
@@ -1189,46 +1237,6 @@ client.on("interactionCreate", async interaction => {
                 await interaction.showModal(modal);
                 return;
             }
-            if (interaction.customId.startsWith("scam_report:cat:")) {
-                const category = interaction.customId.slice("scam_report:cat:".length);
-                const labels = {
-                    confirmed: "Confirmed Scam",
-                    insufficient: "Insufficient Proof",
-                    not_scam: "Not a Scam"
-                };
-                const label = labels[category];
-                if (!label) return;
-                if (!interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
-                    await interaction.reply({ content: "You need Moderate Members to categorize this report.", ephemeral: true });
-                    return;
-                }
-                if (interaction.message.hasThread) {
-                    await interaction.reply({ content: `This report is already logged in <#${interaction.message.thread.id}>.`, ephemeral: true });
-                    return;
-                }
-                await interaction.deferUpdate();
-                const thread = await interaction.message.startThread({
-                    name: `scam-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`.slice(0, 100),
-                    reason: `Scam report marked ${label} by ${interaction.user.tag}`
-                });
-                await thread.send({
-                    content:
-                        `**${label}** — logged by <@${interaction.user.id}>\n` +
-                        `Original report: ${interaction.message.url}`
-                });
-                await interaction.message.edit({
-                    components: [
-                        new ActionRowBuilder().addComponents(
-                            new ButtonBuilder()
-                                .setCustomId("scam_report:logged")
-                                .setLabel(label)
-                                .setStyle(category === "confirmed" ? ButtonStyle.Danger : ButtonStyle.Secondary)
-                                .setDisabled(true)
-                        )
-                    ]
-                });
-                return;
-            }
             if (interaction.customId !== "close_ticket") return;
 
             if (!interaction.channel.isThread()) {
@@ -1311,10 +1319,14 @@ client.on("interactionCreate", async interaction => {
                     await interaction.reply({ content: "I couldn't find the staff scam-report channel. Please tell staff.", ephemeral: true });
                     return;
                 }
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId("scam_report:cat:confirmed").setLabel("Confirmed Scam").setStyle(ButtonStyle.Danger),
-                    new ButtonBuilder().setCustomId("scam_report:cat:insufficient").setLabel("Insufficient Proof").setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId("scam_report:cat:not_scam").setLabel("Not a Scam").setStyle(ButtonStyle.Success)
+                const menu = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId("scam_report:categorize")
+                        .setPlaceholder("Categorize this report")
+                        .addOptions(SCAM_REPORT_CATEGORIES.map(([value, name]) => ({
+                            label: name,
+                            value
+                        })))
                 );
                 await logChannel.send({
                     embeds: [
@@ -1323,13 +1335,13 @@ client.on("interactionCreate", async interaction => {
                             .setTitle("Scam Report")
                             .addFields(
                                 { name: "Reporter", value: `<@${interaction.user.id}> (\`${interaction.user.id}\`)` },
-                                { name: "Offender", value: target.slice(0, 1024) },
-                                { name: "IGN", value: (ign || "Unknown").slice(0, 1024) },
+                                { name: "Accused User ID", value: target.slice(0, 1024) },
+                                { name: "Accused IGN", value: (ign || "Not Provided").slice(0, 1024) },
                                 { name: "Details & proof", value: details.slice(0, 1024) }
                             )
                             .setTimestamp()
                     ],
-                    components: [row]
+                    components: [menu]
                 });
                 await interaction.reply({ content: "Report sent to staff. Thanks.", ephemeral: true });
                 return;
